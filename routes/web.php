@@ -232,3 +232,25 @@ Route::get('/teste-ia-controlada', function (
         'mensagem_fora_escopo' => $openAIService->responderLead('Vocês fazem toldo?'),
     ];
 });
+
+Route::get('/teste-fluxo-lead/{id}', function (
+    $id,
+    \App\Services\Lead360StageService $stageService
+) {
+    $lead = \App\Models\Lead::findOrFail($id);
+
+    return [
+        'lead_id' => $lead->id,
+        'nome' => $lead->nome,
+        'tipo_projeto' => $lead->tipo_projeto,
+        'tipo_imovel' => $lead->tipo_imovel,
+        'interesse' => $lead->interesse,
+        'bairro' => $lead->bairro,
+        'cidade' => $lead->cidade,
+        'largura' => $lead->largura,
+        'comprimento' => $lead->comprimento,
+        'estrutura_existente' => $lead->estrutura_existente,
+        'proxima_pergunta' => $stageService->proximaPergunta($lead),
+        'contexto_minimo_fechado' => $stageService->contextoMinimoFechado($lead),
+    ];
+});
