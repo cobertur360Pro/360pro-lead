@@ -110,7 +110,9 @@ Route::post('/leads/{id}/ia', function (
     Request $request,
     OpenAIService $openAIService,
     LeadMemoryExtractorService $memoryExtractor,
-    LeadDecisionEngineService $decisionEngine
+    LeadDecisionEngineService $decisionEngine,
+    Lead360GuardrailsService $guardrails,
+    Lead360StageService $stageService
 ) {
     $request->validate([
         'mensagem_ia' => ['required', 'string'],
@@ -121,7 +123,10 @@ Route::post('/leads/{id}/ia', function (
     $mensagem = $request->input('mensagem_ia');
 
     $memoryExtractor->extrairEAtualizar($lead, $mensagem);
-    $decisionEngine->processar($lead, $mensagem);
+
+    if ($guardrails->qualificacaoHabilitada()) {
+        $decisionEngine->processar($lead, $mensagem);
+    }
 
     $lead->refresh();
     $lead->load('interactions');
@@ -140,12 +145,24 @@ Route::post('/leads/{id}/ia', function (
 
     $fatos = $lead->fatosConfirmados();
 
-    $resposta = $openAIService->responderLead(
-        $mensagem,
-        array_merge($fatos, [
-            'historico' => $historico,
-        ])
-    );
+    $resposta = null;
+
+    if ($guardrails->fluxoGuiadoAtivo()) {
+        $proximaPergunta = $stageService->proximaPergunta($lead);
+
+        if ($proximaPergunta) {
+            $resposta = $proximaPergunta;
+        }
+    }
+
+    if (! $resposta) {
+        $resposta = $openAIService->responderLead(
+            $mensagem,
+            array_merge($fatos, [
+                'historico' => $historico,
+            ])
+        );
+    }
 
     LeadInteraction::create([
         'lead_id' => $lead->id,
