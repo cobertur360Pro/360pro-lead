@@ -140,6 +140,8 @@ Route::post('/leads/{id}/ia', function (
                 'resposta' => $i->resposta_ia,
             ];
         })
+        $humanizer = app(\App\Services\Lead360HumanizerService::class);
+        $resposta = $humanizer->humanizar($resposta);
         ->values()
         ->toArray();
 
