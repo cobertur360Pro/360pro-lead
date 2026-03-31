@@ -18,9 +18,34 @@ Route::get('/leads', function () {
 })->name('leads.index');
 
 Route::post('/leads', function (Request $request) {
-    Lead::create($request->all());
+    Lead::create([
+        'nome' => $request->nome,
+        'telefone' => $request->telefone,
+        'cidade' => $request->cidade,
+        'status' => 'novo'
+    ]);
+
     return redirect()->back();
 })->name('leads.store');
+
+Route::post('/leads/status/{id}', function ($id) {
+    $lead = Lead::findOrFail($id);
+
+    $statuses = Lead::statusList();
+    $currentIndex = array_search($lead->status, $statuses);
+
+    if ($currentIndex < count($statuses) - 1) {
+        $lead->status = $statuses[$currentIndex + 1];
+        $lead->save();
+    }
+
+    return redirect()->back();
+})->name('leads.status');
+
+Route::post('/leads/delete/{id}', function ($id) {
+    Lead::findOrFail($id)->delete();
+    return redirect()->back();
+})->name('leads.delete');
 
 Route::get('/conversas', function () {
     return view('conversas.index');
