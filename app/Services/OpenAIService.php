@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Lead;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
