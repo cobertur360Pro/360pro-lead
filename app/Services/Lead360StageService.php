@@ -6,32 +6,32 @@ use App\Models\Lead;
 
 class Lead360StageService
 {
-    public function proximaPergunta(Lead $lead): ?string
+   public function proximaPergunta(Lead $lead): ?string
     {
         if (! $lead->tipo_projeto) {
-            return 'Para eu te conduzir certo, me diga primeiro qual solução você procura dentro da nossa linha: cobertura, sacada, fechamento ou box?';
+            return 'Me conta uma coisa pra eu te orientar certo 🙂 você está buscando cobertura, fechamento, sacada ou algo dentro dessa linha?';
         }
-
+    
         if (! $lead->tipo_imovel) {
-            return 'Essa instalação será em casa, apartamento ou espaço comercial?';
+            return 'Perfeito 👍 essa instalação será em casa, apartamento ou espaço comercial?';
         }
-
+    
         if (! $lead->interesse) {
-            return 'Esse projeto é para qual área exatamente: quintal, corredor, sacada, espaço gourmet, piscina ou outra área?';
+            return 'Entendi. E essa cobertura é pra qual área exatamente? Quintal, corredor, espaço gourmet, piscina…?';
         }
-
+    
         if (! $lead->bairro && ! $lead->cidade) {
-            return 'Em qual bairro ou cidade será essa instalação?';
+            return 'Legal. Em qual bairro ou cidade será essa instalação?';
         }
-
+    
         if (! $lead->largura || ! $lead->comprimento) {
-            return 'Você já tem as medidas aproximadas do local? Pode me passar largura x comprimento, mesmo que seja aproximado.';
+            return 'Você já tem uma noção das medidas? Pode ser aproximado, tipo largura x comprimento.';
         }
-
+    
         if (! $lead->estrutura_existente) {
-            return 'Hoje já existe alguma estrutura no local ou será uma estrutura nova?';
+            return 'Hoje já existe alguma estrutura no local ou vamos partir de algo totalmente novo?';
         }
-
+    
         return null;
     }
 
