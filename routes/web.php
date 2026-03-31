@@ -2,6 +2,7 @@
 
 use App\Models\Lead;
 use App\Models\LeadInteraction;
+use App\Services\OpenAIService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -87,6 +88,47 @@ Route::post('/leads/{id}/interacoes', function ($id, Request $request) {
     return redirect()->route('leads.show', $lead->id);
 })->name('leads.interacoes.store');
 
+Route::post('/leads/{id}/qualificacao', function ($id, Request $request) {
+    $lead = Lead::findOrFail($id);
+
+    $lead->origem = $request->origem;
+    $lead->interesse = $request->interesse;
+    $lead->urgencia = $request->urgencia;
+
+    $lead->save();
+    $lead->atualizarQualificacao();
+
+    return redirect()->route('leads.show', $lead->id);
+})->name('leads.qualificacao');
+
+Route::post('/leads/{id}/ia', function ($id, Request $request, OpenAIService $openAIService) {
+    $request->validate([
+        'mensagem_ia' => ['required', 'string'],
+    ]);
+
+    $lead = Lead::query()->findOrFail($id);
+
+    $resposta = $openAIService->responderLead(
+        $request->input('mensagem_ia'),
+        [
+            'nome' => $lead->nome,
+            'cidade' => $lead->cidade,
+            'interesse' => $lead->interesse,
+            'urgencia' => $lead->urgencia,
+            'temperatura' => $lead->temperatura,
+        ]
+    );
+
+    LeadInteraction::create([
+        'lead_id' => $lead->id,
+        'tipo' => 'ia_teste',
+        'conteudo' => $request->input('mensagem_ia'),
+        'resposta_ia' => $resposta,
+    ]);
+
+    return redirect()->route('leads.show', $lead->id);
+})->name('leads.ia');
+
 Route::post('/leads/status/{id}', function ($id) {
     $lead = Lead::query()->findOrFail($id);
 
@@ -119,16 +161,3 @@ Route::get('/conversas', function () {
 Route::get('/configuracoes', function () {
     return view('configuracoes.index');
 })->name('configuracoes.index');
-
-Route::post('/leads/{id}/qualificacao', function ($id, Request $request) {
-    $lead = Lead::findOrFail($id);
-
-    $lead->origem = $request->origem;
-    $lead->interesse = $request->interesse;
-    $lead->urgencia = $request->urgencia;
-
-    $lead->save();
-    $lead->atualizarQualificacao();
-
-    return redirect()->route('leads.show', $lead->id);
-})->name('leads.qualificacao');
