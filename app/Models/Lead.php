@@ -12,4 +12,15 @@ class Lead extends Model
         'cidade',
         'status'
     ];
+
+    public static function statusList()
+    {
+        return [
+            'novo',
+            'contato',
+            'orçamento',
+            'fechado',
+            'perdido'
+        ];
+    }
 }
