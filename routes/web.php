@@ -2,6 +2,7 @@
 
 use App\Models\Lead;
 use App\Models\LeadInteraction;
+use App\Services\LeadMemoryExtractorService;
 use App\Services\OpenAIService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -101,33 +102,41 @@ Route::post('/leads/{id}/qualificacao', function ($id, Request $request) {
     return redirect()->route('leads.show', $lead->id);
 })->name('leads.qualificacao');
 
-Route::post('/leads/{id}/ia', function ($id, Request $request, OpenAIService $openAIService) {
+Route::post('/leads/{id}/ia', function (
+    $id,
+    Request $request,
+    OpenAIService $openAIService,
+    LeadMemoryExtractorService $memoryExtractor
+) {
     $request->validate([
         'mensagem_ia' => ['required', 'string'],
     ]);
 
-    $lead = Lead::query()->findOrFail($id);
+    $lead = Lead::query()->with('interactions')->findOrFail($id);
+
+    $memoryExtractor->extrairEAtualizar($lead, $request->input('mensagem_ia'));
+    $lead->refresh();
+    $lead->load('interactions');
 
     $historico = $lead->interactions
         ->take(10)
+        ->reverse()
         ->map(function ($i) {
             return [
                 'pergunta' => $i->conteudo,
                 'resposta' => $i->resposta_ia,
             ];
         })
+        ->values()
         ->toArray();
-    
+
+    $fatos = $lead->fatosConfirmados();
+
     $resposta = $openAIService->responderLead(
         $request->input('mensagem_ia'),
-        [
-            'nome' => $lead->nome,
-            'cidade' => $lead->cidade,
-            'interesse' => $lead->interesse,
-            'urgencia' => $lead->urgencia,
-            'temperatura' => $lead->temperatura,
+        array_merge($fatos, [
             'historico' => $historico,
-        ]
+        ])
     );
 
     LeadInteraction::create([
@@ -153,6 +162,7 @@ Route::post('/leads/status/{id}', function ($id) {
     }
 
     $lead->save();
+    $lead->atualizarQualificacao();
 
     return redirect()->route('leads.index');
 })->name('leads.status');
