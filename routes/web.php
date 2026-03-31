@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use App\Models\Lead;
 
 Route::get('/', function () {
     return view('home');
@@ -8,16 +10,22 @@ Route::get('/', function () {
 
 Route::get('/painel', function () {
     return view('painel.index');
-})->name('painel.index');
+});
 
 Route::get('/leads', function () {
-    return view('leads.index');
+    $leads = Lead::latest()->get();
+    return view('leads.index', compact('leads'));
 })->name('leads.index');
+
+Route::post('/leads', function (Request $request) {
+    Lead::create($request->all());
+    return redirect()->back();
+})->name('leads.store');
 
 Route::get('/conversas', function () {
     return view('conversas.index');
-})->name('conversas.index');
+});
 
 Route::get('/configuracoes', function () {
     return view('configuracoes.index');
-})->name('configuracoes.index');
+});
