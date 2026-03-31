@@ -7,6 +7,8 @@ use App\Services\OpenAIService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Services\LeadDecisionEngineService;
+use App\Services\Lead360GuardrailsService;
+use App\Services\Lead360StageService;
 
 Route::get('/', function () {
     return view('home');
@@ -197,5 +199,19 @@ Route::get('/teste-helpers', function () {
         'param_LDA_001' => param_bool('LDA-001'),
         'param_LDA_011' => param_bool('LDA-011'),
         'param_LDA_034' => param_text('LDA-034'),
+    ];
+});
+
+Route::get('/teste-ia-controlada', function (
+    \App\Services\OpenAIService $openAIService,
+    \App\Services\Lead360GuardrailsService $guardrails
+) {
+    return [
+        'atendimento_ia_habilitado' => $guardrails->atendimentoIaHabilitado(),
+        'openai_habilitada' => $guardrails->openAiHabilitada(),
+        'pode_agendar_diretamente' => $guardrails->iaPodeAgendarDiretamente(),
+        'pode_gerar_orcamento_diretamente' => $guardrails->iaPodeGerarOrcamentoDiretamente(),
+        'pode_falar_preco_sem_contexto' => $guardrails->iaPodeFalarPrecoSemContexto(),
+        'mensagem_fora_escopo' => $openAIService->responderLead('Vocês fazem toldo?'),
     ];
 });
