@@ -106,7 +106,8 @@ Route::post('/leads/{id}/ia', function (
     $id,
     Request $request,
     OpenAIService $openAIService,
-    LeadMemoryExtractorService $memoryExtractor
+    LeadMemoryExtractorService $memoryExtractor,
+    LeadDecisionEngineService $decisionEngine
 ) {
     $request->validate([
         'mensagem_ia' => ['required', 'string'],
@@ -114,7 +115,11 @@ Route::post('/leads/{id}/ia', function (
 
     $lead = Lead::query()->with('interactions')->findOrFail($id);
 
-    $memoryExtractor->extrairEAtualizar($lead, $request->input('mensagem_ia'));
+    $mensagem = $request->input('mensagem_ia');
+
+    $memoryExtractor->extrairEAtualizar($lead, $mensagem);
+    $decisionEngine->processar($lead, $mensagem);
+
     $lead->refresh();
     $lead->load('interactions');
 
@@ -133,7 +138,7 @@ Route::post('/leads/{id}/ia', function (
     $fatos = $lead->fatosConfirmados();
 
     $resposta = $openAIService->responderLead(
-        $request->input('mensagem_ia'),
+        $mensagem,
         array_merge($fatos, [
             'historico' => $historico,
         ])
@@ -142,7 +147,7 @@ Route::post('/leads/{id}/ia', function (
     LeadInteraction::create([
         'lead_id' => $lead->id,
         'tipo' => 'ia_teste',
-        'conteudo' => $request->input('mensagem_ia'),
+        'conteudo' => $mensagem,
         'resposta_ia' => $resposta,
     ]);
 
