@@ -25,6 +25,7 @@
         <th>Telefone</th>
         <th>Cidade</th>
         <th>Status</th>
+        <th>Ações</th>
     </tr>
 
     @foreach($leads as $lead)
@@ -34,6 +35,19 @@
         <td>{{ $lead->telefone }}</td>
         <td>{{ $lead->cidade }}</td>
         <td>{{ $lead->status }}</td>
+        <td>
+
+            <form method="POST" action="/leads/status/{{ $lead->id }}" style="display:inline;">
+                @csrf
+                <button type="submit">Avançar</button>
+            </form>
+
+            <form method="POST" action="/leads/delete/{{ $lead->id }}" style="display:inline;">
+                @csrf
+                <button type="submit">Excluir</button>
+            </form>
+
+        </td>
     </tr>
     @endforeach
 
