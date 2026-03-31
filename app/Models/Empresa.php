@@ -17,17 +17,17 @@ class Empresa extends Model
         'status',
     ];
 
-    public function empresaModulos(): HasMany
+    public function modulos(): HasMany
     {
         return $this->hasMany(EmpresaModulo::class);
     }
 
-    public function parametroValores(): HasMany
+    public function parametros(): HasMany
     {
         return $this->hasMany(ParametroValor::class);
     }
 
-    public function auditoriaLogs(): HasMany
+    public function auditorias(): HasMany
     {
         return $this->hasMany(AuditoriaLog::class);
     }
