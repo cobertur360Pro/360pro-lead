@@ -35,8 +35,8 @@ class Lead360StageService
         return null;
     }
 
-    public function contextoMinimoFechado(Lead $lead): bool
+   public function contextoMinimoFechado(Lead $lead): bool
     {
-        return ! is_null($this->proximaPergunta($lead));
+        return is_null($this->proximaPergunta($lead));
     }
 }
