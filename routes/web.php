@@ -163,33 +163,71 @@ Route::post('/leads/{id}/ia', function (
 
     $resposta = null;
 
-    if ($guardrails->fluxoGuiadoAtivo()) {
-        $proximaPergunta = $stageService->proximaPergunta($lead);
+   if ($guardrails->qualificacaoHabilitada()) {
+    $decisionEngine->processar($lead, $mensagem);
+}
 
-        if ($proximaPergunta) {
-            $resposta = $proximaPergunta;
-        }
+$lead->refresh();
+$lead->load('interactions');
+
+$historico = $lead->interactions
+    ->take(10)
+    ->reverse()
+    ->map(function ($i) {
+        return [
+            'pergunta' => $i->conteudo,
+            'resposta' => $i->resposta_ia,
+        ];
+    })
+    ->values()
+    ->toArray();
+
+$fatos = $lead->fatosConfirmados();
+
+$intentService = app(\App\Services\Lead360IntentService::class);
+$intencao = $intentService->detectar($mensagem);
+
+$resposta = null;
+
+// 1) Primeiro trata intenção básica da conversa
+if ($intencao === 'saudacao') {
+    $resposta = 'Oi! Tudo bem 🙂 Sou o assistente da Baumann e vou te ajudar a encontrar a melhor solução. Me conta: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
+} elseif ($intencao === 'identidade') {
+    $resposta = 'Eu sou o assistente virtual da Baumann, criado para te orientar de forma rápida e correta. Se precisar, também posso encaminhar você para um especialista. Me conta: o que você está buscando no seu projeto?';
+} elseif ($intencao === 'duvida') {
+    $resposta = 'Sem problema, eu te explico melhor 🙂 Vou te fazer algumas perguntas rápidas para entender seu projeto e te orientar da forma certa. Primeiro: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
+}
+
+// 2) Só entra no fluxo guiado se ainda não tiver resposta
+if (! $resposta && $guardrails->fluxoGuiadoAtivo()) {
+    $proximaPergunta = $stageService->proximaPergunta($lead);
+
+    if ($proximaPergunta) {
+        $resposta = $proximaPergunta;
     }
+}
 
-    if (! $resposta) {
-        $resposta = $openAIService->responderLead(
-            $mensagem,
-            array_merge($fatos, [
-                'historico' => $historico,
-            ])
-        );
-    }
-    $humanizer = app(\App\Services\Lead360HumanizerService::class);
-    $resposta = $humanizer->humanizar($resposta);
-    
-    LeadInteraction::create([
-        'lead_id' => $lead->id,
-        'tipo' => 'ia_teste',
-        'conteudo' => $mensagem,
-        'resposta_ia' => $resposta,
-    ]);
+// 3) Só chama OpenAI se ainda não tiver resposta
+if (! $resposta) {
+    $resposta = $openAIService->responderLead(
+        $mensagem,
+        array_merge($fatos, [
+            'historico' => $historico,
+        ])
+    );
+}
 
-    return redirect()->route('leads.show', $lead->id);
+$humanizer = app(\App\Services\Lead360HumanizerService::class);
+$resposta = $humanizer->humanizar($resposta);
+
+LeadInteraction::create([
+    'lead_id' => $lead->id,
+    'tipo' => 'ia_teste',
+    'conteudo' => $mensagem,
+    'resposta_ia' => $resposta,
+]);
+
+return redirect()->route('leads.show', $lead->id);
 })->name('leads.ia');
 
 Route::post('/leads/status/{id}', function ($id) {
