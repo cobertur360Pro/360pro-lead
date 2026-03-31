@@ -119,3 +119,16 @@ Route::get('/conversas', function () {
 Route::get('/configuracoes', function () {
     return view('configuracoes.index');
 })->name('configuracoes.index');
+
+Route::post('/leads/{id}/qualificacao', function ($id, Request $request) {
+    $lead = Lead::findOrFail($id);
+
+    $lead->origem = $request->origem;
+    $lead->interesse = $request->interesse;
+    $lead->urgencia = $request->urgencia;
+
+    $lead->save();
+    $lead->atualizarQualificacao();
+
+    return redirect()->route('leads.show', $lead->id);
+})->name('leads.qualificacao');
