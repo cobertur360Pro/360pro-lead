@@ -58,9 +58,18 @@
     <p><strong>Urgência:</strong> {{ $lead->urgencia }}</p>
     <p><strong>Temperatura:</strong> {{ $lead->temperatura }}</p>
     <p><strong>Score:</strong> {{ $lead->score }}</p>
-
+    
     <hr>
-
+    
+    <h3>Memória estruturada</h3>
+    <p><strong>Bairro:</strong> {{ $lead->bairro }}</p>
+    <p><strong>Tipo de imóvel:</strong> {{ $lead->tipo_imovel }}</p>
+    <p><strong>Tipo de projeto:</strong> {{ $lead->tipo_projeto }}</p>
+    <p><strong>Largura:</strong> {{ $lead->largura }}</p>
+    <p><strong>Comprimento:</strong> {{ $lead->comprimento }}</p>
+    <p><strong>Estrutura existente:</strong> {{ $lead->estrutura_existente }}</p>
+    <p><strong>Material desejado:</strong> {{ $lead->material_desejado }}</p>
+    
     <h2>Observações</h2>
     <form method="POST" action="{{ route('leads.observacoes', $lead->id) }}">
         @csrf
