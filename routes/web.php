@@ -121,6 +121,22 @@ Route::post('/leads/{id}/ia', function (
     $lead = Lead::query()->with('interactions')->findOrFail($id);
 
     $mensagem = $request->input('mensagem_ia');
+    $intentService = app(\App\Services\Lead360IntentService::class);
+    $intencao = $intentService->detectar($mensagem);
+    
+    $resposta = null;
+    
+    if ($intencao === 'saudacao') {
+        $resposta = 'Oi! Tudo bem 🙂 Sou o assistente da Baumann e vou te ajudar a encontrar a melhor solução. Me conta: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
+    }
+    
+    elseif ($intencao === 'identidade') {
+        $resposta = 'Eu sou o assistente virtual da Baumann, criado para te orientar de forma rápida e correta. Se precisar, posso encaminhar você para um especialista também. Me conta: o que você está buscando no seu projeto?';
+    }
+    
+    elseif ($intencao === 'duvida') {
+        $resposta = 'Sem problema, eu te explico melhor 🙂 Vou te fazer algumas perguntas rápidas para entender seu projeto e te orientar da forma certa. Primeiro: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
+    }
 
     $memoryExtractor->extrairEAtualizar($lead, $mensagem);
 
