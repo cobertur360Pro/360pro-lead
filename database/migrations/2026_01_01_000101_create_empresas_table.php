@@ -8,19 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('modulos', function (Blueprint $table) {
+        Schema::create('empresas', function (Blueprint $table) {
             $table->id();
-            $table->string('codigo', 30)->unique();
             $table->string('nome');
-            $table->text('descricao')->nullable();
-            $table->string('camada', 30)->default('core');
-            $table->boolean('ativo')->default(true);
+            $table->string('slug')->unique();
+            $table->string('email')->nullable();
+            $table->string('telefone')->nullable();
+            $table->string('status')->default('ativa');
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('modulos');
+        Schema::dropIfExists('empresas');
     }
 };
