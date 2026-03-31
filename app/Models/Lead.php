@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Lead extends Model
 {
@@ -10,17 +11,23 @@ class Lead extends Model
         'nome',
         'telefone',
         'cidade',
-        'status'
+        'status',
+        'observacoes',
     ];
 
-    public static function statusList()
+    public static function statusList(): array
     {
         return [
             'novo',
             'contato',
-            'orçamento',
+            'orcamento',
             'fechado',
-            'perdido'
+            'perdido',
         ];
+    }
+
+    public function interactions(): HasMany
+    {
+        return $this->hasMany(LeadInteraction::class)->latest();
     }
 }
