@@ -69,6 +69,24 @@
     <p><strong>Comprimento:</strong> {{ $lead->comprimento }}</p>
     <p><strong>Estrutura existente:</strong> {{ $lead->estrutura_existente }}</p>
     <p><strong>Material desejado:</strong> {{ $lead->material_desejado }}</p>
+
+    <hr>
+
+    <h3>Cérebro comercial</h3>
+    <p><strong>Perfil do cliente:</strong> {{ $lead->perfil_cliente }}</p>
+    <p><strong>Fase do funil:</strong> {{ $lead->fase_funil }}</p>
+    <p><strong>Urgência real:</strong> {{ $lead->urgencia_real }}</p>
+    <p><strong>Preferência estética:</strong> {{ $lead->preferencia_estetica }}</p>
+    <p><strong>Objeção principal:</strong> {{ $lead->objecao_principal }}</p>
+    <p><strong>Medo principal:</strong> {{ $lead->medo_principal }}</p>
+    <p><strong>Motivo da compra:</strong> {{ $lead->motivo_compra }}</p>
+    <p><strong>Restrição de orçamento:</strong> {{ $lead->restricao_orcamento }}</p>
+    <p><strong>Restrição de prazo:</strong> {{ $lead->restricao_prazo }}</p>
+    <p><strong>Cliente técnico:</strong> {{ $lead->cliente_tecnico ? 'Sim' : 'Não' }}</p>
+    <p><strong>Cliente existente:</strong> {{ $lead->cliente_existente ? 'Sim' : 'Não' }}</p>
+    <p><strong>Próxima ação:</strong> {{ $lead->proxima_acao }}</p>
+    <p><strong>Data de follow-up:</strong> {{ optional($lead->data_followup)->format('d/m/Y') }}</p>
+    <p><strong>Resumo do contexto:</strong> {{ $lead->resumo_contexto }}</p>
     
     <h2>Observações</h2>
     <form method="POST" action="{{ route('leads.observacoes', $lead->id) }}">
