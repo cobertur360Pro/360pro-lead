@@ -11,6 +11,7 @@ class LeadInteraction extends Model
         'lead_id',
         'tipo',
         'conteudo',
+        'resposta_ia',
     ];
 
     public function lead(): BelongsTo
