@@ -2,10 +2,28 @@
 
 use Illuminate\Support\Facades\Route;
 
+/*
+|--------------------------------------------------------------------------
+| Web Routes - Lead360 AI
+|--------------------------------------------------------------------------
+*/
+
 Route::get('/', function () {
-    return view('welcome');
+    return view('home');
 });
 
 Route::get('/painel', function () {
-    return "Painel Lead360 AI funcionando";
+    return view('painel.index');
+});
+
+Route::get('/leads', function () {
+    return view('leads.index');
+});
+
+Route::get('/conversas', function () {
+    return view('conversas.index');
+});
+
+Route::get('/configuracoes', function () {
+    return view('configuracoes.index');
 });
