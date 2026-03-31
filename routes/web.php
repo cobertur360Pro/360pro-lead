@@ -6,6 +6,7 @@ use App\Services\LeadMemoryExtractorService;
 use App\Services\OpenAIService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Services\LeadDecisionEngineService;
 
 Route::get('/', function () {
     return view('home');
