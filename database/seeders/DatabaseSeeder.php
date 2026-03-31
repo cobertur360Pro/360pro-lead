@@ -15,11 +15,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
+        // Usuário padrão (pode manter)
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
+        ]);
+
+        // 🔥 SEED DOS MÓDULOS (OBRIGATÓRIO)
+        $this->call([
+            ModuloSeeder::class,
         ]);
     }
 }
