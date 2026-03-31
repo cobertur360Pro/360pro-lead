@@ -7,46 +7,68 @@ use Throwable;
 
 class OpenAIService
 {
-    public function responderLead(string $mensagem, array $contexto = []): string
+   public function responderLead(string $mensagem, array $contexto = []): string
     {
         $apiKey = env('OPENAI_API_KEY');
-
+    
         if (! $apiKey) {
-            return 'OpenAI não configurada. Cadastre a OPENAI_API_KEY no ambiente.';
+            return 'OpenAI não configurada.';
         }
-
-        $promptSistema = $this->montarPromptSistema($contexto);
-
+    
+        $historico = data_get($contexto, 'historico', []);
+    
+        $messages = [];
+    
+        // Prompt do sistema
+        $messages[] = [
+            'role' => 'system',
+            'content' => $this->montarPromptSistema($contexto),
+        ];
+    
+        // Histórico das interações
+        foreach ($historico as $item) {
+            if (!empty($item['pergunta'])) {
+                $messages[] = [
+                    'role' => 'user',
+                    'content' => $item['pergunta'],
+                ];
+            }
+    
+            if (!empty($item['resposta'])) {
+                $messages[] = [
+                    'role' => 'assistant',
+                    'content' => $item['resposta'],
+                ];
+            }
+        }
+    
+        // Mensagem atual
+        $messages[] = [
+            'role' => 'user',
+            'content' => $mensagem,
+        ];
+    
         try {
             $response = Http::withToken($apiKey)
                 ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
                     'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
-                    'messages' => [
-                        [
-                            'role' => 'system',
-                            'content' => $promptSistema,
-                        ],
-                        [
-                            'role' => 'user',
-                            'content' => $mensagem,
-                        ],
-                    ],
+                    'messages' => $messages,
                     'temperature' => 0.6,
                     'max_tokens' => 300,
                 ]);
-
+    
             if (! $response->successful()) {
-                return 'Erro ao consultar a OpenAI: ' . $response->body();
+                return 'Erro OpenAI: ' . $response->body();
             }
-
+    
             return data_get(
                 $response->json(),
                 'choices.0.message.content',
-                'Sem resposta da IA.'
+                'Sem resposta.'
             );
-        } catch (Throwable $e) {
-            return 'Erro interno ao consultar a OpenAI: ' . $e->getMessage();
+        } catch (\Throwable $e) {
+            return 'Erro: ' . $e->getMessage();
         }
     }
 
