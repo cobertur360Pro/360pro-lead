@@ -28,6 +28,8 @@
                 <th>Status</th>
                 <th>Detalhe</th>
                 <th>Ações</th>
+                <th>Temperatura</th>
+                <th>Score</th>
             </tr>
         </thead>
         <tbody>
@@ -38,6 +40,8 @@
                     <td>{{ $lead->telefone }}</td>
                     <td>{{ $lead->cidade }}</td>
                     <td>{{ $lead->status }}</td>
+                    <td>{{ $lead->temperatura }}</td>
+                    <td>{{ $lead->score }}</td>
                     <td>
                         <a href="{{ route('leads.show', $lead->id) }}">Abrir</a>
                     </td>
