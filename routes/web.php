@@ -1,56 +1,121 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use Illuminate\Http\Request;
 use App\Models\Lead;
+use App\Models\LeadInteraction;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('home');
 })->name('home');
 
 Route::get('/painel', function () {
-    return view('painel.index');
-});
+    $totalLeads = Lead::count();
+    $totalNovo = Lead::where('status', 'novo')->count();
+    $totalContato = Lead::where('status', 'contato')->count();
+    $totalOrcamento = Lead::where('status', 'orcamento')->count();
+    $totalFechado = Lead::where('status', 'fechado')->count();
+    $totalPerdido = Lead::where('status', 'perdido')->count();
+
+    return view('painel.index', compact(
+        'totalLeads',
+        'totalNovo',
+        'totalContato',
+        'totalOrcamento',
+        'totalFechado',
+        'totalPerdido'
+    ));
+})->name('painel.index');
 
 Route::get('/leads', function () {
-    $leads = Lead::latest()->get();
-    return view('leads.index', compact('leads'));
+    $leads = Lead::query()->latest()->get();
+
+    return view('leads.index', [
+        'leads' => $leads,
+    ]);
 })->name('leads.index');
 
 Route::post('/leads', function (Request $request) {
-    Lead::create([
-        'nome' => $request->nome,
-        'telefone' => $request->telefone,
-        'cidade' => $request->cidade,
-        'status' => 'novo'
+    $request->validate([
+        'nome' => ['required', 'string', 'max:255'],
+        'telefone' => ['nullable', 'string', 'max:255'],
+        'cidade' => ['nullable', 'string', 'max:255'],
     ]);
 
-    return redirect()->back();
+    Lead::create([
+        'nome' => $request->input('nome'),
+        'telefone' => $request->input('telefone'),
+        'cidade' => $request->input('cidade'),
+        'status' => 'novo',
+    ]);
+
+    return redirect()->route('leads.index');
 })->name('leads.store');
 
+Route::get('/leads/{id}', function ($id) {
+    $lead = Lead::query()->with('interactions')->findOrFail($id);
+
+    return view('leads.show', compact('lead'));
+})->name('leads.show');
+
+Route::post('/leads/{id}/observacoes', function ($id, Request $request) {
+    $request->validate([
+        'observacoes' => ['nullable', 'string'],
+    ]);
+
+    $lead = Lead::query()->findOrFail($id);
+    $lead->observacoes = $request->input('observacoes');
+    $lead->save();
+
+    return redirect()->route('leads.show', $lead->id);
+})->name('leads.observacoes');
+
+Route::post('/leads/{id}/interacoes', function ($id, Request $request) {
+    $request->validate([
+        'tipo' => ['required', 'string', 'max:100'],
+        'conteudo' => ['required', 'string'],
+    ]);
+
+    $lead = Lead::query()->findOrFail($id);
+
+    LeadInteraction::create([
+        'lead_id' => $lead->id,
+        'tipo' => $request->input('tipo'),
+        'conteudo' => $request->input('conteudo'),
+    ]);
+
+    return redirect()->route('leads.show', $lead->id);
+})->name('leads.interacoes.store');
+
 Route::post('/leads/status/{id}', function ($id) {
-    $lead = Lead::findOrFail($id);
+    $lead = Lead::query()->findOrFail($id);
 
     $statuses = Lead::statusList();
-    $currentIndex = array_search($lead->status, $statuses);
+    $currentIndex = array_search($lead->status, $statuses, true);
 
-    if ($currentIndex < count($statuses) - 1) {
+    if ($currentIndex === false) {
+        $lead->status = 'novo';
+    } elseif ($currentIndex < count($statuses) - 1) {
         $lead->status = $statuses[$currentIndex + 1];
-        $lead->save();
     }
 
-    return redirect()->back();
+    $lead->save();
+
+    return redirect()->route('leads.index');
 })->name('leads.status');
 
 Route::post('/leads/delete/{id}', function ($id) {
-    Lead::findOrFail($id)->delete();
-    return redirect()->back();
+    Lead::query()->findOrFail($id)->delete();
+
+    return redirect()->route('leads.index');
 })->name('leads.delete');
 
 Route::get('/conversas', function () {
-    return view('conversas.index');
-});
+    $interactions = LeadInteraction::query()->with('lead')->latest()->get();
+
+    return view('conversas.index', compact('interactions'));
+})->name('conversas.index');
 
 Route::get('/configuracoes', function () {
     return view('configuracoes.index');
-});
+})->name('configuracoes.index');
