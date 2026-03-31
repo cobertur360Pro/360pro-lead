@@ -108,6 +108,16 @@ Route::post('/leads/{id}/ia', function ($id, Request $request, OpenAIService $op
 
     $lead = Lead::query()->findOrFail($id);
 
+    $historico = $lead->interactions
+        ->take(10)
+        ->map(function ($i) {
+            return [
+                'pergunta' => $i->conteudo,
+                'resposta' => $i->resposta_ia,
+            ];
+        })
+        ->toArray();
+    
     $resposta = $openAIService->responderLead(
         $request->input('mensagem_ia'),
         [
@@ -116,6 +126,7 @@ Route::post('/leads/{id}/ia', function ($id, Request $request, OpenAIService $op
             'interesse' => $lead->interesse,
             'urgencia' => $lead->urgencia,
             'temperatura' => $lead->temperatura,
+            'historico' => $historico,
         ]
     );
 
