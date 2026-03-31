@@ -10,6 +10,10 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             ModuloSeeder::class,
+            EmpresaSeeder::class,
+            EmpresaModuloSeeder::class,
+            Lead360ParametroSeeder::class,
+            Lead360ParametroValorSeeder::class,
         ]);
     }
 }
