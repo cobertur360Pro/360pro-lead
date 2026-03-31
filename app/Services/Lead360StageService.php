@@ -9,11 +9,15 @@ class Lead360StageService
     public function proximaPergunta(Lead $lead): ?string
     {
         if (! $lead->tipo_projeto) {
-            return 'Para eu te conduzir certo, me diga primeiro qual solução você procura: cobertura, sacada, fechamento, box ou outro item dentro da nossa linha?';
+            return 'Para eu te conduzir certo, me diga primeiro qual solução você procura dentro da nossa linha: cobertura, sacada, fechamento ou box?';
         }
 
         if (! $lead->tipo_imovel) {
             return 'Essa instalação será em casa, apartamento ou espaço comercial?';
+        }
+
+        if (! $lead->interesse) {
+            return 'Esse projeto é para qual área exatamente: quintal, corredor, sacada, espaço gourmet, piscina ou outra área?';
         }
 
         if (! $lead->bairro && ! $lead->cidade) {
@@ -29,5 +33,10 @@ class Lead360StageService
         }
 
         return null;
+    }
+
+    public function contextoMinimoFechado(Lead $lead): bool
+    {
+        return ! is_null($this->proximaPergunta($lead));
     }
 }
