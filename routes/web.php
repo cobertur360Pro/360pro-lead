@@ -140,9 +140,7 @@ Route::post('/leads/{id}/ia', function (
                 'resposta' => $i->resposta_ia,
             ];
         })
-        $humanizer = app(\App\Services\Lead360HumanizerService::class);
-        $resposta = $humanizer->humanizar($resposta);
-        ->values()
+               ->values()
         ->toArray();
 
     $fatos = $lead->fatosConfirmados();
@@ -165,7 +163,9 @@ Route::post('/leads/{id}/ia', function (
             ])
         );
     }
-
+    $humanizer = app(\App\Services\Lead360HumanizerService::class);
+    $resposta = $humanizer->humanizar($resposta);
+    
     LeadInteraction::create([
         'lead_id' => $lead->id,
         'tipo' => 'ia_teste',
