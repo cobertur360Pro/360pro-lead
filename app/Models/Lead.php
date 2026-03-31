@@ -11,6 +11,13 @@ class Lead extends Model
         'nome',
         'telefone',
         'cidade',
+        'bairro',
+        'tipo_imovel',
+        'tipo_projeto',
+        'largura',
+        'comprimento',
+        'estrutura_existente',
+        'material_desejado',
         'status',
         'observacoes',
         'origem',
@@ -46,6 +53,11 @@ class Lead extends Model
         if ($this->urgencia === 'alta') $score += 30;
         if ($this->status === 'orcamento') $score += 30;
 
+        if ($this->tipo_imovel) $score += 10;
+        if ($this->tipo_projeto) $score += 10;
+        if ($this->largura || $this->comprimento) $score += 10;
+        if ($this->estrutura_existente) $score += 10;
+
         return min($score, 100);
     }
 
@@ -62,5 +74,23 @@ class Lead extends Model
         }
 
         $this->save();
+    }
+
+    public function fatosConfirmados(): array
+    {
+        return [
+            'nome' => $this->nome,
+            'cidade' => $this->cidade,
+            'bairro' => $this->bairro,
+            'tipo_imovel' => $this->tipo_imovel,
+            'tipo_projeto' => $this->tipo_projeto,
+            'largura' => $this->largura,
+            'comprimento' => $this->comprimento,
+            'estrutura_existente' => $this->estrutura_existente,
+            'material_desejado' => $this->material_desejado,
+            'interesse' => $this->interesse,
+            'urgencia' => $this->urgencia,
+            'temperatura' => $this->temperatura,
+        ];
     }
 }
