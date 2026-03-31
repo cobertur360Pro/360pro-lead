@@ -188,3 +188,14 @@ Route::get('/conversas', function () {
 Route::get('/configuracoes', function () {
     return view('configuracoes.index');
 })->name('configuracoes.index');
+
+Route::get('/teste-helpers', function () {
+    return [
+        'tenant_id' => tenant_id(),
+        'modulo_LD001' => modulo_habilitado('LD001'),
+        'modulo_LD007' => modulo_habilitado('LD007'),
+        'param_LDA_001' => param_bool('LDA-001'),
+        'param_LDA_011' => param_bool('LDA-011'),
+        'param_LDA_034' => param_text('LDA-034'),
+    ];
+});
