@@ -21,7 +21,7 @@ class Modulo extends Model
         'ativo' => 'boolean',
     ];
 
-    public function empresaModulos(): HasMany
+    public function empresas(): HasMany
     {
         return $this->hasMany(EmpresaModulo::class);
     }
