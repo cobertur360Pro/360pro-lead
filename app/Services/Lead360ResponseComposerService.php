@@ -38,29 +38,25 @@ class Lead360ResponseComposerService
     protected function composePerguntaPorLacuna(array $merged, array $extracao, ?string $lacuna): string
     {
         return match ($lacuna) {
-            'nome' => $this->askNome($merged),
-            'localizacao' => $this->askLocalizacao($merged),
+            'nome' => $this->askNome($merged, $extracao),
+            'localizacao' => $this->askLocalizacao($merged, $extracao),
             'solucao_principal' => $this->askSolucao($merged),
             'tipo_imovel' => $this->askTipoImovel($merged, $extracao),
             'area_projeto' => $this->askAreaProjeto($merged, $extracao),
             'medida_ou_midia' => $this->askMedidaOuMidia($merged, $extracao),
             'principal_desejo' => $this->askPrincipalDesejo($merged, $extracao),
-            'prioridade_atual' => $this->askPrioridadeAtual($merged),
+            'prioridade_atual' => $this->askPrioridadeAtual($merged, $extracao),
             default => $this->composeAcolhimento($merged),
         };
     }
 
     protected function composePedirMaterialApoio(array $merged, array $extracao): string
     {
-        $abertura = $this->buildContextReflection($extracao);
-
-        if ($abertura === null && ! empty($merged['area_projeto'])) {
-            $abertura = 'Perfeito. Então é para ' . $this->formatArea($merged['area_projeto']) . '.';
-        }
+        $abertura = $this->buildContextReflection($extracao, $merged);
 
         return trim(
             ($abertura ? $abertura . ' ' : '')
-            . 'Se você já tiver a medida aproximada ou alguma foto/vídeo do local, isso já ajuda bastante a te orientar certo.'
+            . 'Se você já tiver a medida aproximada ou alguma foto, vídeo ou projeto do local, isso já ajuda bastante a te orientar certo.'
         );
     }
 
@@ -126,18 +122,27 @@ class Lead360ResponseComposerService
         return 'Entendi. Vamos tratar isso como assistência. Me confirma por favor o problema exato e, se puder, envie foto ou vídeo para eu deixar o atendimento bem direcionado.';
     }
 
-    protected function askNome(array $merged): string
+    protected function askNome(array $merged, array $extracao): string
     {
         if (! empty($merged['solucao_principal'])) {
             return 'Perfeito. Antes de seguir com seu atendimento, me diz seu nome para eu registrar tudo certinho.';
         }
 
+        if (($extracao['tipo_mensagem'] ?? null) === 'saudacao') {
+            return 'Oi! Tudo bem 🙂 Vou te ajudar por aqui. Antes de seguir, me diz seu nome para eu registrar seu atendimento certinho.';
+        }
+
         return 'Perfeito. Antes de seguir, me diz seu nome para eu registrar seu atendimento certinho.';
     }
 
-    protected function askLocalizacao(array $merged): string
+    protected function askLocalizacao(array $merged, array $extracao): string
     {
-        return 'Ótimo. Pra eu te orientar com mais precisão, me passa o CEP do local da instalação. Se preferir, pode me informar pelo menos o bairro e a cidade.';
+        $reflexo = $this->buildContextReflection($extracao, $merged);
+
+        return trim(
+            ($reflexo ? $reflexo . ' ' : '')
+            . 'Pra eu te orientar com mais precisão, me passa o CEP do local da instalação. Se preferir, pode me informar pelo menos o bairro e a cidade.'
+        );
     }
 
     protected function askSolucao(array $merged): string
@@ -147,10 +152,10 @@ class Lead360ResponseComposerService
 
     protected function askTipoImovel(array $merged, array $extracao): string
     {
-        $reflexo = $this->buildContextReflection($extracao);
+        $reflexo = $this->buildContextReflection($extracao, $merged);
 
         if ($reflexo) {
-            return $reflexo . ' E essa instalação será em casa, apartamento ou espaço comercial?';
+            return $reflexo . ' Isso será em casa, apartamento ou espaço comercial?';
         }
 
         if (! empty($merged['solucao_principal'])) {
@@ -162,14 +167,14 @@ class Lead360ResponseComposerService
 
     protected function askAreaProjeto(array $merged, array $extracao): string
     {
-        $reflexo = $this->buildContextReflection($extracao);
+        $reflexo = $this->buildContextReflection($extracao, $merged);
 
         if ($reflexo) {
             return $reflexo . ' E essa instalação é para qual área exatamente? Garagem, quintal, corredor, espaço gourmet, fundos, varanda...?';
         }
 
         if (! empty($merged['solucao_principal']) && ! empty($merged['tipo_imovel'])) {
-            return 'Entendi. E essa ' . $merged['solucao_principal'] . ' é para qual área da sua ' . $merged['tipo_imovel'] . ' exatamente? Garagem, quintal, corredor, espaço gourmet, fundos, varanda...?';
+            return 'Entendi. E essa ' . $merged['solucao_principal'] . ' é para qual área do local exatamente? Garagem, quintal, corredor, espaço gourmet, fundos, varanda...?';
         }
 
         return 'Entendi. E essa instalação é para qual área exatamente? Garagem, quintal, corredor, espaço gourmet, fundos, varanda...?';
@@ -177,36 +182,35 @@ class Lead360ResponseComposerService
 
     protected function askMedidaOuMidia(array $merged, array $extracao): string
     {
-        $reflexo = $this->buildContextReflection($extracao);
+        $reflexo = $this->buildContextReflection($extracao, $merged);
 
-        if ($reflexo) {
-            return $reflexo . ' Se você já tiver a medida aproximada ou alguma foto/vídeo do local, isso já ajuda bastante.';
-        }
-
-        if (! empty($merged['area_projeto'])) {
-            return 'Perfeito. Então é para ' . $this->formatArea($merged['area_projeto']) . '. Se você já tiver a medida aproximada ou alguma foto/vídeo do local, isso já ajuda bastante.';
-        }
-
-        return 'Se você já tiver a medida aproximada ou alguma foto/vídeo do local, isso já ajuda bastante a te orientar certo.';
+        return trim(
+            ($reflexo ? $reflexo . ' ' : '')
+            . 'Se você já tiver a medida aproximada ou alguma foto, vídeo ou projeto do local, isso já ajuda bastante.'
+        );
     }
 
     protected function askPrincipalDesejo(array $merged, array $extracao): string
     {
-        $reflexo = $this->buildContextReflection($extracao);
+        $reflexo = $this->buildContextReflection($extracao, $merged);
 
-        if ($reflexo) {
-            return $reflexo . ' Agora me ajuda com uma parte importante: o que você mais busca com esse projeto? Proteção, conforto, estética, segurança ou uso do espaço?';
-        }
-
-        return 'Agora me ajuda com uma parte importante: o que você mais busca com esse projeto? Proteção, conforto, estética, segurança ou uso do espaço?';
+        return trim(
+            ($reflexo ? $reflexo . ' ' : '')
+            . 'Agora me ajuda com uma parte importante: o que você mais busca com esse projeto? Proteção, conforto, estética, segurança ou uso do espaço?'
+        );
     }
 
-    protected function askPrioridadeAtual(array $merged): string
+    protected function askPrioridadeAtual(array $merged, array $extracao): string
     {
-        return 'Entendi. E olhando para esse projeto agora, o que pesa mais na sua decisão: prazo, qualidade, preço, forma de pagamento ou outro ponto?';
+        $reflexo = $this->buildContextReflection($extracao, $merged);
+
+        return trim(
+            ($reflexo ? $reflexo . ' ' : '')
+            . 'E olhando para esse projeto agora, o que pesa mais na sua decisão: prazo, qualidade, preço, forma de pagamento ou outro ponto?'
+        );
     }
 
-    protected function buildContextReflection(array $extracao): ?string
+    protected function buildContextReflection(array $extracao, array $merged): ?string
     {
         if (! empty($extracao['nome'])) {
             return 'Perfeito, ' . $extracao['nome'] . '.';
@@ -216,20 +220,25 @@ class Lead360ResponseComposerService
             return 'Perfeito, já anotei a medida aproximada de ' . $extracao['largura'] . ' x ' . $extracao['comprimento'] . '.';
         }
 
-        if (! empty($extracao['area_projeto']) && ! empty($extracao['tipo_imovel']) && ! empty($extracao['solucao_principal'])) {
-            return 'Perfeito. Então é uma ' . $extracao['solucao_principal'] . ' para ' . $this->formatArea($extracao['area_projeto']) . ' da sua ' . $extracao['tipo_imovel'] . '.';
+        if (! empty($extracao['area_projeto']) && ! empty($merged['solucao_principal'])) {
+            $tipoLugar = ! empty($merged['tipo_imovel']) ? ' da sua ' . $merged['tipo_imovel'] : '';
+            return 'Perfeito. Então é ' . $this->withArticle($merged['solucao_principal']) . ' para ' . $this->formatArea($extracao['area_projeto']) . $tipoLugar . '.';
         }
 
-        if (! empty($extracao['area_projeto'])) {
-            return 'Perfeito. Então é para ' . $this->formatArea($extracao['area_projeto']) . '.';
-        }
-
-        if (! empty($extracao['tipo_imovel'])) {
-            return 'Entendi, será em ' . $this->withArticle($extracao['tipo_imovel']) . '.';
+        if (! empty($extracao['tipo_imovel']) && ! empty($merged['solucao_principal'])) {
+            return 'Perfeito. Então é ' . $this->withArticle($merged['solucao_principal']) . ' em ' . $this->withArticle($extracao['tipo_imovel']) . '.';
         }
 
         if (! empty($extracao['solucao_principal'])) {
             return 'Perfeito, já entendi que você busca ' . $this->withArticle($extracao['solucao_principal']) . '.';
+        }
+
+        if (! empty($extracao['area_projeto'])) {
+            return 'Perfeito. Entendi que o projeto é para ' . $this->formatArea($extracao['area_projeto']) . '.';
+        }
+
+        if (! empty($extracao['tipo_imovel'])) {
+            return 'Entendi, isso será em ' . $this->withArticle($extracao['tipo_imovel']) . '.';
         }
 
         if (! empty($extracao['principal_desejo'])) {
@@ -274,8 +283,11 @@ class Lead360ResponseComposerService
     {
         return match ($area) {
             'espaco gourmet' => 'o espaço gourmet',
+            'varanda gourmet' => 'a varanda gourmet',
             'area externa' => 'a área externa',
             'estudio fotografico' => 'o estúdio fotográfico',
+            'fundos' => 'a área dos fundos',
+            'terraco' => 'o terraço',
             default => (str_starts_with($area, 'a ') || str_starts_with($area, 'o ')) ? $area : 'a ' . $area,
         };
     }
