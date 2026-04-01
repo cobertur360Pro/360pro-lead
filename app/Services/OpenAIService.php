@@ -252,7 +252,7 @@ AÇÕES VÁLIDAS para decision.action:
             }
         }
 
-        return empty($linhas) ? 'Sem histórico relevante.' : implode(\"\\n\", $linhas);
+       return empty($linhas) ? 'Sem histórico relevante.' : implode("\n", $linhas);
     }
 
     protected function extractJson(string $text): ?string
