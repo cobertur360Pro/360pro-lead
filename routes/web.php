@@ -109,7 +109,6 @@ Route::post('/leads/{id}/qualificacao', function ($id, Request $request) {
 Route::post('/leads/{id}/ia', function (
     $id,
     Request $request,
-    LeadDecisionEngineService $decisionEngine,
     Lead360GuardrailsService $guardrails,
     Lead360OrchestratorService $orchestrator
 ) {
@@ -120,12 +119,6 @@ Route::post('/leads/{id}/ia', function (
     if ($mensagem === '') {
         return redirect()->route('leads.show', $lead->id);
     }
-
-    if ($guardrails->qualificacaoHabilitada()) {
-        $decisionEngine->processar($lead, $mensagem);
-    }
-
-    $lead->refresh();
 
     $resultado = $orchestrator->process($lead, $mensagem);
 
