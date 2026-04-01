@@ -11,6 +11,7 @@ class Lead360OrchestratorService
     public function __construct(
         protected Lead360ContextBuilderService $contextBuilder,
         protected Lead360CommercialExtractorService $extractor,
+        protected Lead360SemanticExtractorService $semanticExtractor,
         protected Lead360ConversationStateService $stateService,
         protected Lead360DecisionService $decisionService,
         protected Lead360ResponseComposerService $responseComposer,
@@ -22,7 +23,10 @@ class Lead360OrchestratorService
     {
         $contextoBase = $this->contextBuilder->build($lead);
 
-        $extracao = $this->extractor->extract($mensagem, $contextoBase);
+        $extracaoLexica = $this->extractor->extract($mensagem, $contextoBase);
+        $extracaoSemantica = $this->semanticExtractor->extract($mensagem, $contextoBase);
+
+        $extracao = $this->mergeExtractions($extracaoLexica, $extracaoSemantica);
 
         $contextoAtualizado = $this->mergeContexto($contextoBase, $extracao);
 
@@ -147,28 +151,21 @@ class Lead360OrchestratorService
             );
         }
 
-        if (
-            Schema::hasColumn($table, 'tem_foto') &&
-            ! empty($contexto['tem_foto'])
-        ) {
+        if (Schema::hasColumn($table, 'tem_foto') && ! empty($contexto['tem_foto'])) {
             $updates['tem_foto'] = true;
         }
 
-        if (
-            Schema::hasColumn($table, 'tem_video') &&
-            ! empty($contexto['tem_video'])
-        ) {
+        if (Schema::hasColumn($table, 'tem_video') && ! empty($contexto['tem_video'])) {
             $updates['tem_video'] = true;
         }
 
-        if (
-            Schema::hasColumn($table, 'tem_projeto') &&
-            ! empty($contexto['tem_projeto'])
-        ) {
+        if (Schema::hasColumn($table, 'tem_projeto') && ! empty($contexto['tem_projeto'])) {
             $updates['tem_projeto'] = true;
         }
 
-        if (! empty($updates)) {
+        if ($lead->isDirty() === false && ! empty($updates)) {
+            $lead->forceFill($updates);
+        } elseif (! empty($updates)) {
             $lead->forceFill($updates);
         }
 
@@ -212,6 +209,47 @@ class Lead360OrchestratorService
             }
 
             $merged[$chave] = $valor;
+        }
+
+        return $merged;
+    }
+
+    protected function mergeExtractions(array $lexica, array $semantica): array
+    {
+        if (empty($semantica)) {
+            return $lexica;
+        }
+
+        $merged = $lexica;
+
+        foreach ($semantica as $chave => $valor) {
+            if ($valor === null) {
+                continue;
+            }
+
+            if (is_array($valor) && empty($valor)) {
+                continue;
+            }
+
+            if (is_bool($valor)) {
+                if ($valor === true) {
+                    $merged[$chave] = true;
+                }
+                continue;
+            }
+
+            $merged[$chave] = $valor;
+        }
+
+        if (! empty($lexica['campos_baixa_confianca']) || ! empty($semantica['campos_baixa_confianca'])) {
+            $merged['campos_baixa_confianca'] = array_values(array_unique(array_merge(
+                $lexica['campos_baixa_confianca'] ?? [],
+                $semantica['campos_baixa_confianca'] ?? []
+            )));
+        }
+
+        if (! empty($semantica['confianca_geral'])) {
+            $merged['confianca_geral'] = $semantica['confianca_geral'];
         }
 
         return $merged;
