@@ -141,6 +141,12 @@
 
     <hr>
 
+    @if(!empty($lead->memoria_estruturada))
+    <hr><br>
+    <h2>Debug do motor da IA</h2>
+    <pre style="white-space: pre-wrap; background: #111; color: #ddd; padding: 12px; border: 1px solid #333;">{{ $lead->memoria_estruturada }}</pre>
+    @endif
+    
     <h2>Histórico de interações</h2>
 
     @forelse($lead->interactions as $interaction)
