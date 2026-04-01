@@ -26,7 +26,7 @@ class Lead360OrchestratorService
         $extracaoLexica = $this->extractor->extract($mensagem, $contextoBase);
         $extracaoSemantica = $this->semanticExtractor->extract($mensagem, $contextoBase);
 
-        $extracao = $this->mergeExtractions($extracaoLexica, $extracaoSemantica);
+        $extracao = $this->mergeExtractions($extracaoLexica, $extracaoSemantica, $contextoBase);
 
         $contextoAtualizado = $this->mergeContexto($contextoBase, $extracao);
 
@@ -46,21 +46,36 @@ class Lead360OrchestratorService
             $decisao
         );
 
+        $debug = [
+            'mensagem' => $mensagem,
+            'extracao_lexica' => $extracaoLexica,
+            'extracao_semantica' => $extracaoSemantica,
+            'extracao_final' => $extracao,
+            'estado' => $estado,
+            'decisao' => $decisao,
+            'resposta' => $resposta,
+            'updated_at' => now()->format('Y-m-d H:i:s'),
+        ];
+
         $this->persistLead(
             $lead,
             $contextoAtualizado,
             $extracao,
             $estado,
             $decisao,
-            $resposta
+            $resposta,
+            $debug
         );
 
         return [
             'contexto' => $contextoAtualizado,
+            'extracao_lexica' => $extracaoLexica,
+            'extracao_semantica' => $extracaoSemantica,
             'extracao' => $extracao,
             'estado' => $estado,
             'decisao' => $decisao,
             'resposta' => $resposta,
+            'debug' => $debug,
         ];
     }
 
@@ -107,7 +122,8 @@ class Lead360OrchestratorService
         array $extracao,
         array $estado,
         array $decisao,
-        string $resposta
+        string $resposta,
+        array $debug = []
     ): void {
         $updates = [];
         $table = $lead->getTable();
@@ -163,9 +179,7 @@ class Lead360OrchestratorService
             $updates['tem_projeto'] = true;
         }
 
-        if ($lead->isDirty() === false && ! empty($updates)) {
-            $lead->forceFill($updates);
-        } elseif (! empty($updates)) {
+        if (! empty($updates)) {
             $lead->forceFill($updates);
         }
 
@@ -177,6 +191,7 @@ class Lead360OrchestratorService
                     'estado' => $estado,
                     'decisao' => $decisao,
                     'ultima_resposta' => $resposta,
+                    'debug' => $debug,
                     'updated_at' => now()->format('Y-m-d H:i:s'),
                 ], JSON_UNESCAPED_UNICODE),
             ]);
@@ -214,15 +229,57 @@ class Lead360OrchestratorService
         return $merged;
     }
 
-    protected function mergeExtractions(array $lexica, array $semantica): array
+    protected function mergeExtractions(array $lexica, array $semantica, array $contextoBase = []): array
     {
         if (empty($semantica)) {
-            return $lexica;
+            return $this->postProcessExtraction($lexica, $contextoBase);
         }
 
         $merged = $lexica;
 
-        foreach ($semantica as $chave => $valor) {
+        $semanticPriorityFields = [
+            'tipo_mensagem',
+            'responde_lacuna_atual',
+            'mudou_assunto',
+            'nome',
+            'telefone',
+            'email',
+            'perfil_contato',
+            'cep',
+            'endereco',
+            'bairro',
+            'cidade',
+            'solucao_principal',
+            'solucao_subtipo',
+            'fora_escopo',
+            'tipo_imovel',
+            'area_projeto',
+            'contexto_uso',
+            'largura',
+            'comprimento',
+            'area_informada_m2',
+            'tem_foto',
+            'tem_video',
+            'tem_projeto',
+            'principal_desejo',
+            'prioridade_atual',
+            'urgencia',
+            'objecao_principal',
+            'estagio_decisao',
+            'assistencia',
+            'problema_relato',
+            'confianca_geral',
+            'campos_baixa_confianca',
+            'lacuna_respondida',
+        ];
+
+        foreach ($semanticPriorityFields as $chave) {
+            if (! array_key_exists($chave, $semantica)) {
+                continue;
+            }
+
+            $valor = $semantica[$chave];
+
             if ($valor === null) {
                 continue;
             }
@@ -232,27 +289,60 @@ class Lead360OrchestratorService
             }
 
             if (is_bool($valor)) {
-                if ($valor === true) {
-                    $merged[$chave] = true;
-                }
+                $merged[$chave] = $valor;
                 continue;
             }
 
             $merged[$chave] = $valor;
         }
 
-        if (! empty($lexica['campos_baixa_confianca']) || ! empty($semantica['campos_baixa_confianca'])) {
-            $merged['campos_baixa_confianca'] = array_values(array_unique(array_merge(
-                $lexica['campos_baixa_confianca'] ?? [],
-                $semantica['campos_baixa_confianca'] ?? []
-            )));
+        if (empty($merged['trouxe_dado_novo'])) {
+            $merged['trouxe_dado_novo'] = ! empty($lexica['trouxe_dado_novo']) || ! empty($semantica['trouxe_dado_novo']);
         }
 
-        if (! empty($semantica['confianca_geral'])) {
-            $merged['confianca_geral'] = $semantica['confianca_geral'];
+        return $this->postProcessExtraction($merged, $contextoBase);
+    }
+
+    protected function postProcessExtraction(array $extracao, array $contextoBase = []): array
+    {
+        $lacunaAtual = $contextoBase['lacuna_atual'] ?? null;
+
+        if (
+            $lacunaAtual === 'principal_desejo' &&
+            empty($extracao['principal_desejo']) &&
+            ! empty($extracao['contexto_uso'])
+        ) {
+            $extracao['principal_desejo'] = $extracao['contexto_uso'];
+            $extracao['responde_lacuna_atual'] = true;
         }
 
-        return $merged;
+        if (
+            $lacunaAtual === 'area_projeto' &&
+            ! empty($extracao['area_projeto'])
+        ) {
+            $extracao['responde_lacuna_atual'] = true;
+        }
+
+        if (
+            $lacunaAtual === 'tipo_imovel' &&
+            ! empty($extracao['tipo_imovel'])
+        ) {
+            $extracao['responde_lacuna_atual'] = true;
+        }
+
+        if (
+            $lacunaAtual === 'medida_ou_midia' &&
+            (
+                (! empty($extracao['largura']) && ! empty($extracao['comprimento']))
+                || ! empty($extracao['tem_foto'])
+                || ! empty($extracao['tem_video'])
+                || ! empty($extracao['tem_projeto'])
+            )
+        ) {
+            $extracao['responde_lacuna_atual'] = true;
+        }
+
+        return $extracao;
     }
 
     protected function isUsefulAiResponse(?string $resposta): bool
