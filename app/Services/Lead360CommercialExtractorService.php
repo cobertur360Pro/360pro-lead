@@ -110,7 +110,11 @@ class Lead360CommercialExtractorService
             return 'formalizacao';
         }
 
-        if (mb_strlen($texto) <= 18) {
+        if ($this->isPesquisa($texto)) {
+            return 'pesquisa';
+        }
+
+        if (mb_strlen($texto) <= 20) {
             return 'resposta_curta';
         }
 
@@ -199,23 +203,23 @@ class Lead360CommercialExtractorService
     protected function extractBairro(string $texto): ?string
     {
         $bairros = [
-            'ipiranga',
-            'mooca',
-            'tatuape',
-            'tatuapé',
-            'vila prudente',
-            'cambuci',
-            'saude',
-            'saúde',
-            'brooklin',
-            'itaim bibi',
-            'vila ipojuca',
-            'jardim da saude',
-            'jardim da saúde',
+            'ipiranga' => 'Ipiranga',
+            'mooca' => 'Mooca',
+            'tatuape' => 'Tatuapé',
+            'tatuapé' => 'Tatuapé',
+            'vila prudente' => 'Vila Prudente',
+            'cambuci' => 'Cambuci',
+            'saude' => 'Saúde',
+            'saúde' => 'Saúde',
+            'brooklin' => 'Brooklin',
+            'itaim bibi' => 'Itaim Bibi',
+            'vila ipojuca' => 'Vila Ipojuca',
+            'jardim da saude' => 'Jardim da Saúde',
+            'jardim da saúde' => 'Jardim da Saúde',
         ];
 
-        foreach ($bairros as $bairro) {
-            if (str_contains($texto, $this->normalize($bairro))) {
+        foreach ($bairros as $busca => $bairro) {
+            if (str_contains($texto, $this->normalize($busca))) {
                 return $bairro;
             }
         }
@@ -265,7 +269,7 @@ class Lead360CommercialExtractorService
 
     protected function extractSolucaoSubtipo(string $texto): ?string
     {
-        if (str_contains($texto, 'retratil') || str_contains($texto, 'retratil')) {
+        if (str_contains($texto, 'retratil') || str_contains($texto, 'retrátil')) {
             return 'retratil';
         }
 
@@ -296,12 +300,20 @@ class Lead360CommercialExtractorService
 
     protected function extractTipoImovel(string $texto): ?string
     {
-        if (str_contains($texto, 'casa')) {
-            return 'casa';
-        }
-
         if (str_contains($texto, 'apartamento')) {
             return 'apartamento';
+        }
+
+        if (
+            str_contains($texto, 'chacara') ||
+            str_contains($texto, 'chácara') ||
+            str_contains($texto, 'sitio') ||
+            str_contains($texto, 'sítio') ||
+            str_contains($texto, 'rancho') ||
+            str_contains($texto, 'casa de campo') ||
+            str_contains($texto, 'casa')
+        ) {
+            return 'casa';
         }
 
         if (
@@ -309,8 +321,11 @@ class Lead360CommercialExtractorService
             str_contains($texto, 'empresa') ||
             str_contains($texto, 'faculdade') ||
             str_contains($texto, 'estudio') ||
-            str_contains($texto, 'estudio fotografico') ||
-            str_contains($texto, 'estudio fotográfico')
+            str_contains($texto, 'estúdio') ||
+            str_contains($texto, 'loja') ||
+            str_contains($texto, 'galpao') ||
+            str_contains($texto, 'galpão') ||
+            str_contains($texto, 'sala comercial')
         ) {
             return 'comercial';
         }
@@ -328,14 +343,21 @@ class Lead360CommercialExtractorService
             'espaço gourmet' => 'espaco gourmet',
             'fundos' => 'fundos',
             'sacada' => 'sacada',
+            'varanda gourmet' => 'varanda gourmet',
             'varanda' => 'varanda',
             'piscina' => 'piscina',
             'area externa' => 'area externa',
             'área externa' => 'area externa',
             'estudio' => 'estudio',
+            'estúdio' => 'estudio',
             'estudio fotografico' => 'estudio fotografico',
+            'estúdio fotográfico' => 'estudio fotografico',
             'frente' => 'frente',
             'lateral' => 'lateral',
+            'terraco' => 'terraco',
+            'terraço' => 'terraco',
+            'lavanderia' => 'lavanderia',
+            'jardim' => 'jardim',
         ];
 
         foreach ($mapa as $busca => $valor) {
@@ -361,7 +383,7 @@ class Lead360CommercialExtractorService
             return 'estetica';
         }
 
-        if (str_contains($texto, 'uso do espaco') || str_contains($texto, 'uso do espaço')) {
+        if (str_contains($texto, 'uso do espaco') || str_contains($texto, 'uso do espaço') || str_contains($texto, 'aproveitar o espaco') || str_contains($texto, 'aproveitar o espaço')) {
             return 'uso do espaco';
         }
 
@@ -462,8 +484,9 @@ class Lead360CommercialExtractorService
         if (
             str_contains($texto, 'urgente') ||
             str_contains($texto, 'preciso rapido') ||
-            str_contains($texto, 'preciso rapido') ||
+            str_contains($texto, 'preciso rápido') ||
             str_contains($texto, 'preciso fechar rapido') ||
+            str_contains($texto, 'preciso fechar rápido') ||
             str_contains($texto, 'obra tem prazo') ||
             str_contains($texto, 'prazo curto')
         ) {
@@ -511,12 +534,13 @@ class Lead360CommercialExtractorService
             str_contains($texto, 'adiantando orcamentos') ||
             str_contains($texto, 'adiantando orçamentos') ||
             str_contains($texto, 'levantando orcamento') ||
-            str_contains($texto, 'levantando orçamento')
+            str_contains($texto, 'levantando orçamento') ||
+            str_contains($texto, 'pesquisando')
         ) {
             return 'levantando orçamento';
         }
 
-        if (str_contains($texto, 'só pesquisando') || str_contains($texto, 'estudando')) {
+        if (str_contains($texto, 'so pesquisando') || str_contains($texto, 'só pesquisando') || str_contains($texto, 'estudando')) {
             return 'pesquisa';
         }
 
@@ -621,12 +645,6 @@ class Lead360CommercialExtractorService
             return true;
         }
 
-        $estadoAtual = $contexto['estado_atual'] ?? null;
-
-        if ($estadoAtual === 'L2' || $estadoAtual === 'L1') {
-            return false;
-        }
-
         return false;
     }
 
@@ -636,10 +654,6 @@ class Lead360CommercialExtractorService
 
         if (! empty($resultado['nome']) && ! $this->nomeVeioPorPadraoClaro($textoOriginal, $texto)) {
             $camposBaixa[] = 'nome';
-        }
-
-        if (! empty($resultado['bairro']) && mb_strlen((string) $resultado['bairro']) < 4) {
-            $camposBaixa[] = 'bairro';
         }
 
         if (
@@ -679,6 +693,15 @@ class Lead360CommercialExtractorService
         }
 
         return false;
+    }
+
+    protected function isPesquisa(string $texto): bool
+    {
+        return str_contains($texto, 'pesquisando')
+            || str_contains($texto, 'levantando orcamento')
+            || str_contains($texto, 'levantando orçamento')
+            || str_contains($texto, 'adiantando orcamento')
+            || str_contains($texto, 'adiantando orçamento');
     }
 
     protected function isUrgencia(string $texto): bool
