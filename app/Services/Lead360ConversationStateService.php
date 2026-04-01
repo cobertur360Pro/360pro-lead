@@ -20,7 +20,7 @@ class Lead360ConversationStateService
             return $this->buildState('E1', $contexto['estado_atual'] ?? null, 'abertura_humana', $merged);
         }
 
-        if (empty($merged['nome'])) {
+        if (empty($merged['nome']) && $this->shouldPrioritizeName($merged)) {
             return $this->buildState('E2', $contexto['estado_atual'] ?? null, 'nome', $merged);
         }
 
@@ -37,7 +37,10 @@ class Lead360ConversationStateService
         }
 
         $temTipoImovelForte = ! empty($merged['tipo_imovel']);
-        $tipoImovelPodeEsperar = in_array($merged['area_projeto'] ?? '', ['garagem', 'quintal', 'fundos', 'varanda', 'varanda gourmet', 'piscina', 'jardim', 'lavanderia', 'terraco'], true);
+        $tipoImovelPodeEsperar = in_array($merged['area_projeto'] ?? '', [
+            'garagem', 'quintal', 'fundos', 'varanda', 'varanda gourmet',
+            'piscina', 'jardim', 'lavanderia', 'terraco', 'espaco gourmet'
+        ], true);
 
         if (! $temTipoImovelForte && ! $tipoImovelPodeEsperar) {
             return $this->buildState('E4', $contexto['estado_atual'] ?? null, 'tipo_imovel', $merged);
@@ -94,6 +97,27 @@ class Lead360ConversationStateService
         }
 
         return $merged;
+    }
+
+    protected function shouldPrioritizeName(array $merged): bool
+    {
+        if (! empty($merged['solucao_principal'])) {
+            return true;
+        }
+
+        if (! empty($merged['area_projeto'])) {
+            return true;
+        }
+
+        if (! empty($merged['tipo_imovel'])) {
+            return true;
+        }
+
+        if (! empty($merged['largura']) || ! empty($merged['comprimento'])) {
+            return true;
+        }
+
+        return false;
     }
 
     protected function buildState(string $estadoAtual, ?string $estadoAnterior, string $lacunaAtual, array $merged): array
@@ -157,7 +181,7 @@ class Lead360ConversationStateService
     {
         $pendentes = [];
 
-        if (empty($merged['nome'])) {
+        if (empty($merged['nome']) && $this->shouldPrioritizeName($merged)) {
             $pendentes[] = 'nome';
         }
 
@@ -173,7 +197,10 @@ class Lead360ConversationStateService
             $pendentes[] = 'area_projeto';
         }
 
-        $tipoImovelPodeEsperar = in_array($merged['area_projeto'] ?? '', ['garagem', 'quintal', 'fundos', 'varanda', 'varanda gourmet', 'piscina', 'jardim', 'lavanderia', 'terraco'], true);
+        $tipoImovelPodeEsperar = in_array($merged['area_projeto'] ?? '', [
+            'garagem', 'quintal', 'fundos', 'varanda', 'varanda gourmet',
+            'piscina', 'jardim', 'lavanderia', 'terraco', 'espaco gourmet'
+        ], true);
 
         if (empty($merged['tipo_imovel']) && ! $tipoImovelPodeEsperar) {
             $pendentes[] = 'tipo_imovel';
