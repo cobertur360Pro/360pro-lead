@@ -16,53 +16,186 @@ class Lead360OrchestratorService
     {
         $contexto = [
             'nome' => $lead->nome,
-            'cidade' => $lead->cidade,
+            'telefone' => $lead->telefone,
+            'email' => $lead->email,
             'bairro' => $lead->bairro,
+            'cidade' => $lead->cidade,
             'solucao_principal' => $lead->tipo_projeto,
+            'tipo_imovel' => $lead->tipo_imovel,
             'area_projeto' => $lead->interesse,
+            'largura' => $lead->largura,
+            'comprimento' => $lead->comprimento,
+            'principal_desejo' => $lead->principal_desejo ?? null,
+            'prioridade_atual' => $this->normalizePrioridades($lead->prioridade_atual ?? null),
+            'lacuna_atual' => $this->resolveLacunaAtual($lead),
+            'historico' => $this->buildHistorico($lead),
         ];
 
         $turno = $this->turnService->process($mensagem, $contexto);
 
         $extracted = $turno['extracted'] ?? [];
+        $decision = $turno['decision'] ?? [];
 
-        // Atualiza lead
         $updates = [];
 
-        if (!empty($extracted['nome'])) {
+        if (! empty($extracted['nome'])) {
             $updates['nome'] = $extracted['nome'];
         }
 
-        if (!empty($extracted['solucao_principal'])) {
+        if (! empty($extracted['email'])) {
+            $updates['email'] = $extracted['email'];
+        }
+
+        if (! empty($extracted['bairro'])) {
+            $updates['bairro'] = $extracted['bairro'];
+        }
+
+        if (! empty($extracted['cidade'])) {
+            $updates['cidade'] = $extracted['cidade'];
+        }
+
+        if (! empty($extracted['solucao_principal'])) {
             $updates['tipo_projeto'] = $extracted['solucao_principal'];
         }
 
-        if (!empty($extracted['area_projeto'])) {
+        if (! empty($extracted['tipo_imovel'])) {
+            $updates['tipo_imovel'] = $extracted['tipo_imovel'];
+        }
+
+        if (! empty($extracted['area_projeto'])) {
             $updates['interesse'] = $extracted['area_projeto'];
         }
 
-        if (!empty($extracted['largura'])) {
+        if (! empty($extracted['largura'])) {
             $updates['largura'] = $extracted['largura'];
         }
 
-        if (!empty($extracted['comprimento'])) {
+        if (! empty($extracted['comprimento'])) {
             $updates['comprimento'] = $extracted['comprimento'];
         }
 
-        if (!empty($updates)) {
-            $lead->update($updates);
+        if (! empty($extracted['principal_desejo']) && Schema::hasColumn($lead->getTable(), 'principal_desejo')) {
+            $updates['principal_desejo'] = $extracted['principal_desejo'];
         }
 
-        // salva debug
+        if (! empty($extracted['objecao_principal']) && Schema::hasColumn($lead->getTable(), 'objecao_principal')) {
+            $updates['objecao_principal'] = $extracted['objecao_principal'];
+        }
+
+        if (! empty($extracted['urgencia']) && Schema::hasColumn($lead->getTable(), 'urgencia_real')) {
+            $updates['urgencia_real'] = $extracted['urgencia'];
+        }
+
+        if (! empty($extracted['estagio_decisao']) && Schema::hasColumn($lead->getTable(), 'fase_funil')) {
+            $updates['fase_funil'] = $extracted['estagio_decisao'];
+        }
+
+        if (! empty($decision['action']) && Schema::hasColumn($lead->getTable(), 'proxima_acao')) {
+            $updates['proxima_acao'] = $decision['action'];
+        }
+
+        if (! empty($turno['understood_summary']) && Schema::hasColumn($lead->getTable(), 'resumo_contexto')) {
+            $updates['resumo_contexto'] = $turno['understood_summary'];
+        }
+
+        if (
+            ! empty($extracted['prioridade_atual']) &&
+            Schema::hasColumn($lead->getTable(), 'prioridade_atual')
+        ) {
+            $updates['prioridade_atual'] = json_encode(
+                array_values($extracted['prioridade_atual']),
+                JSON_UNESCAPED_UNICODE
+            );
+        }
+
+        if (! empty($updates)) {
+            $lead->update($updates);
+            $lead->refresh();
+        }
+
         if (Schema::hasColumn($lead->getTable(), 'memoria_estruturada')) {
             $lead->update([
-                'memoria_estruturada' => json_encode($turno, JSON_UNESCAPED_UNICODE)
+                'memoria_estruturada' => json_encode([
+                    'contexto_enviado' => $contexto,
+                    'turno_estruturado' => $turno,
+                    'updated_at' => now()->format('Y-m-d H:i:s'),
+                ], JSON_UNESCAPED_UNICODE),
             ]);
         }
 
         return [
             'resposta' => $turno['reply'] ?? 'Sem resposta.',
-            'debug' => $turno
+            'debug' => $turno,
         ];
+    }
+
+    protected function buildHistorico(Lead $lead): array
+    {
+        if (! method_exists($lead, 'interactions')) {
+            return [];
+        }
+
+        return $lead->interactions()
+            ->latest('id')
+            ->limit(6)
+            ->get()
+            ->reverse()
+            ->map(function ($item) {
+                return [
+                    'pergunta' => (string) ($item->conteudo ?? ''),
+                    'resposta' => (string) ($item->resposta_ia ?? ''),
+                    'tipo' => (string) ($item->tipo ?? ''),
+                ];
+            })
+            ->values()
+            ->toArray();
+    }
+
+    protected function normalizePrioridades($value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $value)));
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+
+            if (is_array($decoded)) {
+                return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $decoded)));
+            }
+
+            return array_values(array_filter(array_map('trim', preg_split('/[,;|]/', $value))));
+        }
+
+        return [];
+    }
+
+    protected function resolveLacunaAtual(Lead $lead): ?string
+    {
+        if (empty($lead->nome)) {
+            return 'nome';
+        }
+
+        if (empty($lead->bairro) && empty($lead->cidade)) {
+            return 'localizacao';
+        }
+
+        if (empty($lead->tipo_projeto)) {
+            return 'solucao_principal';
+        }
+
+        if (empty($lead->interesse)) {
+            return 'area_projeto';
+        }
+
+        if (empty($lead->largura) || empty($lead->comprimento)) {
+            return 'medida_ou_midia';
+        }
+
+        if (Schema::hasColumn($lead->getTable(), 'principal_desejo') && empty($lead->principal_desejo)) {
+            return 'principal_desejo';
+        }
+
+        return 'prioridade_atual';
     }
 }
