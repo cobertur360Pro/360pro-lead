@@ -14,101 +14,118 @@ class Lead360OrchestratorService
 
     public function process(Lead $lead, string $mensagem): array
     {
+        $memoria = $this->readMemory($lead);
+
         $contexto = [
-            'nome' => $this->sanitizeLeadName($lead->nome),
-            'telefone' => $lead->telefone,
-            'email' => $lead->email,
-            'bairro' => $lead->bairro,
-            'cidade' => $lead->cidade,
-            'solucao_principal' => $lead->tipo_projeto,
-            'tipo_imovel' => $lead->tipo_imovel,
-            'area_projeto' => $lead->interesse,
-            'largura' => $lead->largura,
-            'comprimento' => $lead->comprimento,
-            'principal_desejo' => Schema::hasColumn($lead->getTable(), 'principal_desejo') ? $lead->principal_desejo : null,
-            'prioridade_atual' => $this->normalizePrioridades($lead->prioridade_atual ?? null),
-            'lacuna_atual' => $this->resolveLacunaAtual($lead),
+            'tipo_contato' => $memoria['tipo_contato'] ?? null,
+            'nome' => $this->sanitizeLeadName($lead->nome ?: ($memoria['nome'] ?? null)),
+            'telefone' => $lead->telefone ?: ($memoria['telefone'] ?? null),
+            'email' => $lead->email ?: ($memoria['email'] ?? null),
+
+            'solucao_principal' => $lead->tipo_projeto ?: ($memoria['solucao_principal'] ?? null),
+            'solucao_subtipo' => $memoria['solucao_subtipo'] ?? null,
+
+            'endereco' => $memoria['endereco'] ?? null,
+            'cep' => $memoria['cep'] ?? null,
+            'bairro' => $lead->bairro ?: ($memoria['bairro'] ?? null),
+            'cidade' => $lead->cidade ?: ($memoria['cidade'] ?? null),
+
+            'tipo_imovel' => $lead->tipo_imovel ?: ($memoria['tipo_imovel'] ?? null),
+            'area_projeto' => $lead->interesse ?: ($memoria['area_projeto'] ?? null),
+
+            'tem_video' => (bool) ($memoria['tem_video'] ?? false),
+            'tem_projeto' => (bool) ($memoria['tem_projeto'] ?? false),
+            'tem_foto' => (bool) ($memoria['tem_foto'] ?? false),
+
+            'largura' => $lead->largura ?: ($memoria['largura'] ?? null),
+            'comprimento' => $lead->comprimento ?: ($memoria['comprimento'] ?? null),
+
+            'cor_aluminio' => $memoria['cor_aluminio'] ?? null,
+            'qualificacao_prioridade' => $memoria['qualificacao_prioridade'] ?? null,
+            'etapa_decisao' => $memoria['etapa_decisao'] ?? null,
+
+            'visita_recusada' => (bool) ($memoria['visita_recusada'] ?? false),
+            'lacuna_atual' => $this->resolveLacunaAtual($lead, $memoria),
             'historico' => $this->buildHistorico($lead),
-            'visita_recusada' => $this->detectVisitRefusal($lead),
         ];
 
         $turno = $this->turnService->process($mensagem, $contexto);
+        $e = $turno['extracted'] ?? [];
 
-        $extracted = $turno['extracted'] ?? [];
-        $decision = $turno['decision'] ?? [];
+        $memoryOut = array_merge($memoria, [
+            'tipo_contato' => $e['tipo_contato'] ?? ($memoria['tipo_contato'] ?? null),
+            'nome' => $this->sanitizeLeadName($e['nome'] ?? ($memoria['nome'] ?? null)),
+            'telefone' => $e['telefone'] ?? ($memoria['telefone'] ?? null),
+            'email' => $e['email'] ?? ($memoria['email'] ?? null),
+
+            'solucao_principal' => $e['solucao_principal'] ?? ($memoria['solucao_principal'] ?? null),
+            'solucao_subtipo' => $e['solucao_subtipo'] ?? ($memoria['solucao_subtipo'] ?? null),
+
+            'endereco' => $e['endereco'] ?? ($memoria['endereco'] ?? null),
+            'cep' => $e['cep'] ?? ($memoria['cep'] ?? null),
+            'bairro' => $e['bairro'] ?? ($memoria['bairro'] ?? null),
+            'cidade' => $e['cidade'] ?? ($memoria['cidade'] ?? null),
+
+            'tipo_imovel' => $e['tipo_imovel'] ?? ($memoria['tipo_imovel'] ?? null),
+            'area_projeto' => $e['area_projeto'] ?? ($memoria['area_projeto'] ?? null),
+
+            'tem_video' => ! empty($e['tem_video']) || ! empty($memoria['tem_video']),
+            'tem_projeto' => ! empty($e['tem_projeto']) || ! empty($memoria['tem_projeto']),
+            'tem_foto' => ! empty($e['tem_foto']) || ! empty($memoria['tem_foto']),
+
+            'largura' => $e['largura'] ?? ($memoria['largura'] ?? null),
+            'comprimento' => $e['comprimento'] ?? ($memoria['comprimento'] ?? null),
+
+            'cor_aluminio' => $e['cor_aluminio'] ?? ($memoria['cor_aluminio'] ?? null),
+            'qualificacao_prioridade' => $e['qualificacao_prioridade'] ?? ($memoria['qualificacao_prioridade'] ?? null),
+            'etapa_decisao' => $e['etapa_decisao'] ?? ($memoria['etapa_decisao'] ?? null),
+
+            'visita_recusada' => ! empty($e['visit_refused']) || ! empty($memoria['visita_recusada']),
+            'ultima_resposta' => $turno['reply'] ?? null,
+            'understood_summary' => $turno['understood_summary'] ?? null,
+        ]);
 
         $updates = [];
 
-        $nomeExtraido = $this->sanitizeLeadName($extracted['nome'] ?? null);
-
-        if (! empty($nomeExtraido)) {
-            $updates['nome'] = $nomeExtraido;
+        $nomeLimpo = $this->sanitizeLeadName($memoryOut['nome'] ?? null);
+        if (! empty($nomeLimpo)) {
+            $updates['nome'] = $nomeLimpo;
         }
 
-        if (! empty($extracted['email'])) {
-            $updates['email'] = $extracted['email'];
+        if (! empty($memoryOut['email'])) {
+            $updates['email'] = $memoryOut['email'];
         }
 
-        if (! empty($extracted['bairro'])) {
-            $updates['bairro'] = $extracted['bairro'];
+        if (! empty($memoryOut['bairro'])) {
+            $updates['bairro'] = $memoryOut['bairro'];
         }
 
-        if (! empty($extracted['cidade'])) {
-            $updates['cidade'] = $extracted['cidade'];
+        if (! empty($memoryOut['cidade'])) {
+            $updates['cidade'] = $memoryOut['cidade'];
         }
 
-        if (! empty($extracted['solucao_principal'])) {
-            $updates['tipo_projeto'] = $extracted['solucao_principal'];
+        if (! empty($memoryOut['solucao_principal'])) {
+            $updates['tipo_projeto'] = $memoryOut['solucao_principal'];
         }
 
-        if (! empty($extracted['tipo_imovel'])) {
-            $updates['tipo_imovel'] = $extracted['tipo_imovel'];
+        if (! empty($memoryOut['tipo_imovel'])) {
+            $updates['tipo_imovel'] = $memoryOut['tipo_imovel'];
         }
 
-        if (! empty($extracted['area_projeto'])) {
-            $updates['interesse'] = $extracted['area_projeto'];
+        if (! empty($memoryOut['area_projeto'])) {
+            $updates['interesse'] = $memoryOut['area_projeto'];
         }
 
-        if (! empty($extracted['largura'])) {
-            $updates['largura'] = $extracted['largura'];
+        if (! empty($memoryOut['largura'])) {
+            $updates['largura'] = $memoryOut['largura'];
         }
 
-        if (! empty($extracted['comprimento'])) {
-            $updates['comprimento'] = $extracted['comprimento'];
+        if (! empty($memoryOut['comprimento'])) {
+            $updates['comprimento'] = $memoryOut['comprimento'];
         }
 
-        if (! empty($extracted['principal_desejo']) && Schema::hasColumn($lead->getTable(), 'principal_desejo')) {
-            $updates['principal_desejo'] = $extracted['principal_desejo'];
-        }
-
-        if (! empty($extracted['objecao_principal']) && Schema::hasColumn($lead->getTable(), 'objecao_principal')) {
-            $updates['objecao_principal'] = $extracted['objecao_principal'];
-        }
-
-        if (! empty($extracted['urgencia']) && Schema::hasColumn($lead->getTable(), 'urgencia_real')) {
-            $updates['urgencia_real'] = $extracted['urgencia'];
-        }
-
-        if (! empty($extracted['estagio_decisao']) && Schema::hasColumn($lead->getTable(), 'fase_funil')) {
-            $updates['fase_funil'] = $extracted['estagio_decisao'];
-        }
-
-        if (! empty($decision['action']) && Schema::hasColumn($lead->getTable(), 'proxima_acao')) {
-            $updates['proxima_acao'] = $decision['action'];
-        }
-
-        if (! empty($turno['understood_summary']) && Schema::hasColumn($lead->getTable(), 'resumo_contexto')) {
+        if (Schema::hasColumn($lead->getTable(), 'resumo_contexto') && ! empty($turno['understood_summary'])) {
             $updates['resumo_contexto'] = $turno['understood_summary'];
-        }
-
-        if (
-            ! empty($extracted['prioridade_atual']) &&
-            Schema::hasColumn($lead->getTable(), 'prioridade_atual')
-        ) {
-            $updates['prioridade_atual'] = json_encode(
-                array_values($extracted['prioridade_atual']),
-                JSON_UNESCAPED_UNICODE
-            );
         }
 
         if (! empty($updates)) {
@@ -119,8 +136,10 @@ class Lead360OrchestratorService
         if (Schema::hasColumn($lead->getTable(), 'memoria_estruturada')) {
             $lead->update([
                 'memoria_estruturada' => json_encode([
+                    'roteiro_baumann' => true,
                     'contexto_enviado' => $contexto,
                     'turno_estruturado' => $turno,
+                    'memory' => $memoryOut,
                     'updated_at' => now()->format('Y-m-d H:i:s'),
                 ], JSON_UNESCAPED_UNICODE),
             ]);
@@ -130,6 +149,23 @@ class Lead360OrchestratorService
             'resposta' => $turno['reply'] ?? 'Sem resposta.',
             'debug' => $turno,
         ];
+    }
+
+    protected function readMemory(Lead $lead): array
+    {
+        $raw = $lead->memoria_estruturada ?? null;
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        return is_array($decoded['memory'] ?? null) ? $decoded['memory'] : [];
     }
 
     protected function buildHistorico(Lead $lead): array
@@ -154,31 +190,47 @@ class Lead360OrchestratorService
             ->toArray();
     }
 
-    protected function detectVisitRefusal(Lead $lead): bool
+    protected function resolveLacunaAtual(Lead $lead, array $memory): ?string
     {
-        if (! method_exists($lead, 'interactions')) {
-            return false;
+        $nome = $this->sanitizeLeadName($lead->nome ?: ($memory['nome'] ?? null));
+        $tipoContato = $memory['tipo_contato'] ?? 'orcamento_produto';
+
+        if ($tipoContato !== 'orcamento_produto') {
+            return null;
         }
 
-        $items = $lead->interactions()
-            ->latest('id')
-            ->limit(6)
-            ->get();
-
-        foreach ($items as $item) {
-            $texto = $this->normalizeText((string) ($item->conteudo ?? ''));
-
-            if (
-                str_contains($texto, 'nao quero agendar visita') ||
-                str_contains($texto, 'nao quero visita') ||
-                str_contains($texto, 'sem visita') ||
-                str_contains($texto, 'nao quero marcar visita')
-            ) {
-                return true;
-            }
+        if (empty($nome)) {
+            return 'nome';
         }
 
-        return false;
+        if (empty($memory['endereco']) && empty($memory['cep']) && empty($lead->bairro) && empty($lead->cidade) && empty($memory['bairro']) && empty($memory['cidade'])) {
+            return 'endereco';
+        }
+
+        if (empty($memory['tem_video']) && empty($memory['tem_projeto']) && empty($memory['tem_foto'])) {
+            return 'visual';
+        }
+
+        $largura = $lead->largura ?: ($memory['largura'] ?? null);
+        $comprimento = $lead->comprimento ?: ($memory['comprimento'] ?? null);
+
+        if (empty($largura) || empty($comprimento)) {
+            return 'medida';
+        }
+
+        if (empty($memory['cor_aluminio'])) {
+            return 'cor_aluminio';
+        }
+
+        if (empty($memory['qualificacao_prioridade'])) {
+            return 'qualificacao';
+        }
+
+        if (empty($memory['etapa_decisao'])) {
+            return 'etapa_decisao';
+        }
+
+        return null;
     }
 
     protected function sanitizeLeadName($name): ?string
@@ -195,13 +247,9 @@ class Lead360OrchestratorService
 
         $normalized = $this->normalizeText($name);
 
-        if (preg_match('/lote\s*\d/i', $name)) {
-            return null;
-        }
-
         if (
             str_contains($normalized, 'teste') ||
-            str_contains($normalized, 'lote7') ||
+            str_contains($normalized, 'lote') ||
             str_contains($normalized, 'debug') ||
             str_contains($name, '_')
         ) {
@@ -209,65 +257,6 @@ class Lead360OrchestratorService
         }
 
         return $name;
-    }
-
-    protected function normalizePrioridades($value): array
-    {
-        if (is_array($value)) {
-            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $value)));
-        }
-
-        if (is_string($value) && trim($value) !== '') {
-            $decoded = json_decode($value, true);
-
-            if (is_array($decoded)) {
-                return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $decoded)));
-            }
-
-            return array_values(array_filter(array_map('trim', preg_split('/[,;|]/', $value))));
-        }
-
-        return [];
-    }
-
-    protected function resolveLacunaAtual(Lead $lead): ?string
-    {
-        $nome = $this->sanitizeLeadName($lead->nome);
-
-        if (empty($nome) && $this->hasCommercialIntentInLead($lead)) {
-            return 'nome';
-        }
-
-        if (empty($lead->bairro) && empty($lead->cidade)) {
-            return 'localizacao';
-        }
-
-        if (empty($lead->tipo_projeto)) {
-            return 'solucao_principal';
-        }
-
-        if (empty($lead->interesse)) {
-            return 'area_projeto';
-        }
-
-        if (empty($lead->largura) || empty($lead->comprimento)) {
-            return 'medida_ou_midia';
-        }
-
-        if (Schema::hasColumn($lead->getTable(), 'principal_desejo') && empty($lead->principal_desejo)) {
-            return 'principal_desejo';
-        }
-
-        return 'prioridade_atual';
-    }
-
-    protected function hasCommercialIntentInLead(Lead $lead): bool
-    {
-        return ! empty($lead->tipo_projeto)
-            || ! empty($lead->tipo_imovel)
-            || ! empty($lead->interesse)
-            || ! empty($lead->largura)
-            || ! empty($lead->comprimento);
     }
 
     protected function normalizeText(?string $text): string
