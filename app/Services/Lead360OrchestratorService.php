@@ -15,7 +15,7 @@ class Lead360OrchestratorService
     public function process(Lead $lead, string $mensagem): array
     {
         $contexto = [
-            'nome' => $lead->nome,
+            'nome' => $this->sanitizeLeadName($lead->nome),
             'telefone' => $lead->telefone,
             'email' => $lead->email,
             'bairro' => $lead->bairro,
@@ -25,10 +25,11 @@ class Lead360OrchestratorService
             'area_projeto' => $lead->interesse,
             'largura' => $lead->largura,
             'comprimento' => $lead->comprimento,
-            'principal_desejo' => $lead->principal_desejo ?? null,
+            'principal_desejo' => Schema::hasColumn($lead->getTable(), 'principal_desejo') ? $lead->principal_desejo : null,
             'prioridade_atual' => $this->normalizePrioridades($lead->prioridade_atual ?? null),
             'lacuna_atual' => $this->resolveLacunaAtual($lead),
             'historico' => $this->buildHistorico($lead),
+            'visita_recusada' => $this->detectVisitRefusal($lead),
         ];
 
         $turno = $this->turnService->process($mensagem, $contexto);
@@ -38,8 +39,10 @@ class Lead360OrchestratorService
 
         $updates = [];
 
-        if (! empty($extracted['nome'])) {
-            $updates['nome'] = $extracted['nome'];
+        $nomeExtraido = $this->sanitizeLeadName($extracted['nome'] ?? null);
+
+        if (! empty($nomeExtraido)) {
+            $updates['nome'] = $nomeExtraido;
         }
 
         if (! empty($extracted['email'])) {
@@ -151,6 +154,63 @@ class Lead360OrchestratorService
             ->toArray();
     }
 
+    protected function detectVisitRefusal(Lead $lead): bool
+    {
+        if (! method_exists($lead, 'interactions')) {
+            return false;
+        }
+
+        $items = $lead->interactions()
+            ->latest('id')
+            ->limit(6)
+            ->get();
+
+        foreach ($items as $item) {
+            $texto = $this->normalizeText((string) ($item->conteudo ?? ''));
+
+            if (
+                str_contains($texto, 'nao quero agendar visita') ||
+                str_contains($texto, 'nao quero visita') ||
+                str_contains($texto, 'sem visita') ||
+                str_contains($texto, 'nao quero marcar visita')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function sanitizeLeadName($name): ?string
+    {
+        if (! is_string($name)) {
+            return null;
+        }
+
+        $name = trim($name);
+
+        if ($name === '') {
+            return null;
+        }
+
+        $normalized = $this->normalizeText($name);
+
+        if (preg_match('/lote\s*\d/i', $name)) {
+            return null;
+        }
+
+        if (
+            str_contains($normalized, 'teste') ||
+            str_contains($normalized, 'lote7') ||
+            str_contains($normalized, 'debug') ||
+            str_contains($name, '_')
+        ) {
+            return null;
+        }
+
+        return $name;
+    }
+
     protected function normalizePrioridades($value): array
     {
         if (is_array($value)) {
@@ -172,7 +232,9 @@ class Lead360OrchestratorService
 
     protected function resolveLacunaAtual(Lead $lead): ?string
     {
-        if (empty($lead->nome)) {
+        $nome = $this->sanitizeLeadName($lead->nome);
+
+        if (empty($nome) && $this->hasCommercialIntentInLead($lead)) {
             return 'nome';
         }
 
@@ -197,5 +259,27 @@ class Lead360OrchestratorService
         }
 
         return 'prioridade_atual';
+    }
+
+    protected function hasCommercialIntentInLead(Lead $lead): bool
+    {
+        return ! empty($lead->tipo_projeto)
+            || ! empty($lead->tipo_imovel)
+            || ! empty($lead->interesse)
+            || ! empty($lead->largura)
+            || ! empty($lead->comprimento);
+    }
+
+    protected function normalizeText(?string $text): string
+    {
+        if (! is_string($text)) {
+            return '';
+        }
+
+        $text = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text) ?: $text;
+        $text = strtolower($text);
+        $text = preg_replace('/\s+/', ' ', $text);
+
+        return trim($text);
     }
 }
