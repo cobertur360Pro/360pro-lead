@@ -73,6 +73,7 @@ class Lead360StructuredTurnService
                 'assistencia' => (bool) ($extracted['assistencia'] ?? false),
                 'problema_relato' => $this->cleanString($extracted['problema_relato'] ?? null),
                 'quer_visita' => (bool) ($extracted['quer_visita'] ?? false),
+                'visit_refused' => (bool) ($extracted['visit_refused'] ?? false),
             ],
 
             'decision' => [
@@ -85,24 +86,25 @@ class Lead360StructuredTurnService
             'raw' => $raw,
         ];
 
-        $normalized = $this->postProcess($normalized, $contexto);
-
-        return $normalized;
+        return $this->postProcess($normalized, $contexto, $mensagem ?? null);
     }
 
-    protected function postProcess(array $normalized, array $contexto): array
+    protected function postProcess(array $normalized, array $contexto, ?string $mensagem = null): array
     {
         $e = &$normalized['extracted'];
         $d = &$normalized['decision'];
         $lacunaAtual = $contexto['lacuna_atual'] ?? null;
+        $nomeExistente = $contexto['nome'] ?? null;
+        $visitaRecusada = ! empty($contexto['visita_recusada']) || ! empty($e['visit_refused']);
+        $temIntencaoComercial = $this->hasCommercialIntent($contexto, $e);
 
         if (empty($e['principal_desejo']) && ! empty($e['contexto_uso'])) {
             $e['principal_desejo'] = $e['contexto_uso'];
         }
 
-        if (! empty($e['quer_visita'])) {
+        if (! empty($e['quer_visita']) && ! $visitaRecusada) {
             $d['action'] = 'encaminhar_visita';
-            $d['next_gap'] = null;
+            $d['next_gap'] = empty($nomeExistente) && empty($e['nome']) ? 'nome' : null;
             $normalized['answered_current_gap'] = true;
         }
 
@@ -110,6 +112,11 @@ class Lead360StructuredTurnService
             if ($this->gapWasAnsweredByExtraction($lacunaAtual, $e)) {
                 $normalized['answered_current_gap'] = true;
             }
+        }
+
+        if ($visitaRecusada && $d['action'] === 'encaminhar_visita') {
+            $d['action'] = 'perguntar';
+            $d['next_gap'] = $this->inferNextGap($normalized, $contexto);
         }
 
         if ($d['action'] === null) {
@@ -120,11 +127,84 @@ class Lead360StructuredTurnService
             $d['next_gap'] = $this->inferNextGap($normalized, $contexto);
         }
 
-        if (empty($normalized['reply'])) {
+        if (
+            empty($nomeExistente) &&
+            empty($e['nome']) &&
+            $temIntencaoComercial &&
+            ! in_array($d['action'], ['bloquear_fora_escopo', 'mudar_para_assistencia'], true)
+        ) {
+            $d['next_gap'] = 'nome';
+        }
+
+        $normalized['reply'] = $this->sanitizeReply(
+            $normalized['reply'] ?? '',
+            $contexto,
+            $normalized
+        );
+
+        if (
+            empty($normalized['reply']) ||
+            (
+                empty($nomeExistente) &&
+                empty($e['nome']) &&
+                $temIntencaoComercial &&
+                ! $this->replyAsksForName($normalized['reply'])
+            )
+        ) {
             $normalized['reply'] = $this->fallbackReply($contexto, $normalized);
         }
 
         return $normalized;
+    }
+
+    protected function sanitizeReply(string $reply, array $contexto, array $normalized): string
+    {
+        $reply = trim($reply);
+
+        if ($reply === '') {
+            return '';
+        }
+
+        $nomeContexto = $contexto['nome'] ?? null;
+        if ($this->isPollutedName($nomeContexto)) {
+            $reply = str_replace($nomeContexto, '', $reply);
+            $reply = preg_replace('/\s+,/', ',', $reply);
+            $reply = preg_replace('/\s{2,}/', ' ', $reply);
+            $reply = trim($reply);
+        }
+
+        if (! empty($contexto['visita_recusada']) && str_contains($this->normalizeText($reply), 'agendar uma visita')) {
+            return '';
+        }
+
+        return $reply;
+    }
+
+    protected function replyAsksForName(string $reply): bool
+    {
+        $normalized = $this->normalizeText($reply);
+
+        return str_contains($normalized, 'seu nome')
+            || str_contains($normalized, 'me diz seu nome')
+            || str_contains($normalized, 'me informe seu nome')
+            || str_contains($normalized, 'qual o seu nome');
+    }
+
+    protected function isPollutedName(?string $name): bool
+    {
+        if (! is_string($name) || trim($name) === '') {
+            return false;
+        }
+
+        $normalized = $this->normalizeText($name);
+
+        if (preg_match('/lote\s*\d/i', $name)) {
+            return true;
+        }
+
+        return str_contains($normalized, 'lote7')
+            || str_contains($normalized, 'teste')
+            || str_contains($name, '_');
     }
 
     protected function inferAction(array $normalized, array $contexto): string
@@ -139,16 +219,12 @@ class Lead360StructuredTurnService
             return 'mudar_para_assistencia';
         }
 
-        if (! empty($e['quer_visita'])) {
+        if (! empty($e['quer_visita']) && empty($contexto['visita_recusada'])) {
             return 'encaminhar_visita';
         }
 
         if (! empty($e['objecao_principal'])) {
             return 'defender_valor';
-        }
-
-        if (($contexto['lacuna_atual'] ?? null) === 'nome' && empty($e['nome'])) {
-            return 'perguntar';
         }
 
         if ($normalized['answered_current_gap']) {
@@ -202,8 +278,8 @@ class Lead360StructuredTurnService
     protected function fallbackReply(array $contexto, array $normalized = []): string
     {
         $e = $normalized['extracted'] ?? [];
-        $action = $normalized['decision']['action'] ?? 'acolher';
         $nextGap = $normalized['decision']['next_gap'] ?? null;
+        $visitaRecusada = ! empty($contexto['visita_recusada']) || ! empty($e['visit_refused']);
 
         if (! empty($e['fora_escopo'])) {
             return 'Hoje nosso atendimento está focado nas soluções da linha Baumann, como coberturas em vidro, policarbonato e envidraçamentos. Se o seu projeto estiver nessa linha, eu sigo com você por aqui.';
@@ -213,8 +289,12 @@ class Lead360StructuredTurnService
             return 'Entendi. Vamos tratar isso como assistência. Me confirma por favor o problema exato e, se puder, envie foto ou vídeo para eu deixar o atendimento bem direcionado.';
         }
 
-        if (! empty($e['quer_visita'])) {
-            return 'Perfeito. Nesse caso, faz sentido mesmo seguir com uma visita para avaliar melhor o local. Me diz seu nome para eu registrar seu atendimento certinho e deixar isso encaminhado da forma correta.';
+        if (! empty($e['quer_visita']) && ! $visitaRecusada) {
+            if (empty($contexto['nome']) && empty($e['nome'])) {
+                return 'Perfeito. Faz sentido sim seguir com uma visita nesse caso. Antes de encaminhar isso da forma correta, me diz seu nome para eu registrar seu atendimento certinho.';
+            }
+
+            return 'Perfeito. Faz sentido sim seguir com uma visita nesse caso. Vou deixar isso encaminhado para verificarmos a melhor disponibilidade com a equipe responsável.';
         }
 
         return match ($nextGap) {
@@ -222,11 +302,35 @@ class Lead360StructuredTurnService
             'localizacao' => 'Ótimo. Pra eu te orientar com mais precisão, me passa o CEP do local da instalação ou pelo menos o bairro e a cidade.',
             'solucao_principal' => 'Me conta uma coisa pra eu te orientar certo: você está buscando cobertura, fechamento, sacada ou outra solução da nossa linha?',
             'area_projeto' => 'Entendi. E essa instalação é para qual área exatamente? Garagem, quintal, corredor, espaço gourmet, fundos, varanda...?',
-            'medida_ou_midia' => 'Perfeito. Se você já tiver a medida aproximada ou alguma foto, vídeo ou projeto do local, isso já ajuda bastante a te orientar certo.',
+            'medida_ou_midia' => $visitaRecusada
+                ? 'Sem problema. Mesmo sem medida agora, eu consigo seguir com você por aqui. Antes de avançar, me diz seu nome para eu registrar seu atendimento certinho.'
+                : 'Perfeito. Se você já tiver a medida aproximada ou alguma foto, vídeo ou projeto do local, isso já ajuda bastante a te orientar certo.',
             'principal_desejo' => 'Agora me ajuda com uma parte importante: o que você mais busca com esse projeto? Proteção, conforto, estética, segurança ou uso do espaço?',
             'prioridade_atual' => 'Entendi. E olhando para esse projeto agora, o que pesa mais na sua decisão: prazo, qualidade, preço, forma de pagamento ou outro ponto?',
             default => 'Oi! Tudo bem 🙂 Sou o assistente da Baumann e vou te ajudar por aqui. Me conta: você está buscando cobertura, fechamento, sacada ou outra solução da nossa linha?',
         };
+    }
+
+    protected function hasCommercialIntent(array $contexto, array $e): bool
+    {
+        $campos = [
+            $contexto['solucao_principal'] ?? null,
+            $contexto['area_projeto'] ?? null,
+            $contexto['tipo_imovel'] ?? null,
+            $e['solucao_principal'] ?? null,
+            $e['area_projeto'] ?? null,
+            $e['tipo_imovel'] ?? null,
+            $e['largura'] ?? null,
+            $e['comprimento'] ?? null,
+        ];
+
+        foreach ($campos as $campo) {
+            if (! empty($campo)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function gapWasAnsweredByExtraction(string $gap, array $e): bool
@@ -304,6 +408,7 @@ class Lead360StructuredTurnService
                 'assistencia' => false,
                 'problema_relato' => null,
                 'quer_visita' => false,
+                'visit_refused' => false,
             ],
             'decision' => [
                 'action' => 'acolher',
@@ -324,6 +429,19 @@ class Lead360StructuredTurnService
         $value = trim($value);
 
         return $value === '' ? null : $value;
+    }
+
+    protected function normalizeText(?string $value): string
+    {
+        if (! is_string($value)) {
+            return '';
+        }
+
+        $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value;
+        $value = strtolower($value);
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim($value);
     }
 
     protected function normalizeNumber($value): ?string
