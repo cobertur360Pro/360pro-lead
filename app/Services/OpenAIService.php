@@ -52,6 +52,7 @@ class OpenAIService
                     'assistencia' => false,
                     'problema_relato' => null,
                     'quer_visita' => false,
+                    'visit_refused' => false,
                 ],
                 'decision' => [
                     'action' => 'bloquear_fora_escopo',
@@ -79,7 +80,7 @@ class OpenAIService
                         ['role' => 'system', 'content' => $prompt],
                         ['role' => 'user', 'content' => $mensagem],
                     ],
-                    'temperature' => 0.15,
+                    'temperature' => 0.1,
                     'max_tokens' => 900,
                 ]);
 
@@ -107,6 +108,61 @@ class OpenAIService
         }
     }
 
+    public function responderLead(string $mensagem, array $contexto = []): string
+    {
+        return $this->responderLivre($mensagem, $contexto, 'Responda como consultor comercial humano da Baumann.');
+    }
+
+    public function responderLeadOrientacao(string $mensagem, array $contexto = []): string
+    {
+        return $this->responderLivre($mensagem, $contexto, 'Responda como consultor comercial humano da Baumann, com foco em orientação clara e objetiva.');
+    }
+
+    protected function responderLivre(string $mensagem, array $contexto, string $instrucao): string
+    {
+        $guardrails = app(Lead360GuardrailsService::class);
+
+        if (! $guardrails->atendimentoIaHabilitado()) {
+            return $guardrails->mensagemAtendimentoDesabilitado();
+        }
+
+        if (! $guardrails->openAiHabilitada()) {
+            return 'A integração com IA está desativada no momento.';
+        }
+
+        if (! $guardrails->produtoPermitido($mensagem)) {
+            return $guardrails->mensagemProdutoForaEscopo();
+        }
+
+        $apiKey = env('OPENAI_API_KEY');
+
+        if (! $apiKey) {
+            return 'OpenAI não configurada.';
+        }
+
+        try {
+            $response = Http::withToken($apiKey)
+                ->timeout(60)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+                    'messages' => [
+                        ['role' => 'system', 'content' => $instrucao],
+                        ['role' => 'user', 'content' => $mensagem],
+                    ],
+                    'temperature' => 0.3,
+                    'max_tokens' => 350,
+                ]);
+
+            if (! $response->successful()) {
+                return 'Erro OpenAI: ' . $response->body();
+            }
+
+            return data_get($response->json(), 'choices.0.message.content', 'Sem resposta.');
+        } catch (Throwable $e) {
+            return 'Erro interno ao consultar a OpenAI: ' . $e->getMessage();
+        }
+    }
+
     protected function montarPromptTurnoEstruturado(array $contexto = []): string
     {
         $nome = $contexto['nome'] ?? 'não informado';
@@ -122,6 +178,7 @@ class OpenAIService
             ? implode(', ', $contexto['prioridade_atual'])
             : 'não informada';
         $lacunaAtual = $contexto['lacuna_atual'] ?? 'não informada';
+        $visitaRecusada = ! empty($contexto['visita_recusada']) ? 'sim' : 'não';
         $historico = $this->renderHistoricoResumo($contexto['historico'] ?? []);
 
         return "
@@ -133,34 +190,45 @@ Sua tarefa, a cada mensagem:
 3. decidir a próxima ação correta
 4. escrever a resposta final ao cliente
 
-Você NÃO deve responder como um robô.
-Você NÃO deve repetir perguntas já respondidas.
-Você NÃO deve ignorar pedido de visita.
-Você NÃO deve depender de palavra exata se o sentido estiver claro.
+MISSÃO
+Você não é um chatbot genérico.
+Você é um operador comercial que precisa conduzir o atendimento para um próximo passo útil.
+
+REGRA CENTRAL
+Toda resposta precisa fazer UMA destas coisas:
+- captar dado essencial
+- responder uma dúvida real do cliente
+- conduzir para a próxima etapa do orçamento
+- encaminhar corretamente
+
+Você NÃO pode:
+- inventar características técnicas, modelos, acabamentos, isolamento ou opções que não estejam claramente no contexto
+- repetir pergunta já respondida
+- insistir em visita se o cliente recusou visita
+- ignorar negativa simples como 'não tenho', 'não sei', 'ainda não'
+- agir como formulário
+- ficar em conversa solta sem objetivo
 
 REGRAS FORTES
 - nome do lead é obrigatório e deve ser buscado cedo
-- se o cliente já trouxe solução, área, tipo de imóvel ou medida, use isso
-- se o cliente respondeu a lacuna atual, marque answered_current_gap = true
-- se o cliente pediu visita, priorize visita em vez de continuar em perguntas bobas
-- se o cliente disser que não tem medida, foto ou vídeo, não repita a mesma cobrança do mesmo jeito; ofereça continuação mais inteligente
+- se o cliente já trouxe intenção comercial clara e o nome ainda não existe, priorize pedir o nome cedo
+- se o cliente respondeu à lacuna atual, marque answered_current_gap = true
+- se o cliente pediu visita, priorize visita
+- se o cliente recusou visita, respeite isso e siga por outro caminho
+- se o cliente disser 'não tenho' após pedido de medida/foto/vídeo, trate como resposta válida e ofereça continuação inteligente
 - se o cliente disser algo como 'para as crianças brincarem', 'espaço para brincar', 'usar como lugar para as crianças', isso normalmente responde principal_desejo = uso do espaço
 - se o cliente disser 'estou fazendo cotações', 'pesquisando', 'levantando orçamento', isso indica estagio_decisao = levantando orçamento
 - se o cliente disser 'chácara', 'sítio', 'rancho', isso geralmente aponta para tipo_imovel = casa
 - se o cliente disser 'área gourmet', isso já responde área do projeto
-- se o cliente disser 'não tenho', 'não tenho essas informações', isso é resposta válida de negação e deve ser tratada como tal
-- se o cliente escreveu com erro ortográfico, entenda o sentido
 - faça no máximo uma pergunta por resposta
-- a resposta precisa soar como consultor comercial humano, não como formulário
-- não confirme agenda já marcada; diga que vai encaminhar/verificar
-- se o cliente pedir algo fora do escopo, marque fora_escopo = true
-- se for assistência/pós-venda, marque assistencia = true
+- a resposta deve soar como consultor comercial humano
 
-POSICIONAMENTO BAUMANN
+TRILHO COMERCIAL BAUMANN
+- posicionamento de qualidade, acabamento, segurança e resultado final
 - não competir só por preço
-- foco em qualidade, acabamento, segurança e resultado final
 - orientar antes de oferecer
-- conduzir sem empurrar
+- não empurrar visita como reflexo automático
+- não improvisar repertório técnico fora do contexto
 
 CONTEXTO ATUAL
 Nome: {$nome}
@@ -173,6 +241,7 @@ Medida atual: " . (($largura && $comprimento) ? "{$largura} x {$comprimento}" : 
 Principal desejo: {$principalDesejo}
 Prioridade atual: {$prioridadeAtual}
 Lacuna atual: {$lacunaAtual}
+Visita recusada anteriormente: {$visitaRecusada}
 
 HISTÓRICO RECENTE
 {$historico}
@@ -182,7 +251,7 @@ Responda APENAS em JSON puro, sem markdown, sem explicação.
 
 Formato obrigatório:
 {
-  \"understood_summary\": \"resumo curto do que foi entendido\",
+  \"understood_summary\": \"resumo curto e objetivo do que foi entendido\",
   \"answered_current_gap\": true,
   \"extracted\": {
     \"nome\": null,
@@ -212,7 +281,8 @@ Formato obrigatório:
     \"estagio_decisao\": null,
     \"assistencia\": false,
     \"problema_relato\": null,
-    \"quer_visita\": false
+    \"quer_visita\": false,
+    \"visit_refused\": false
   },
   \"decision\": {
     \"action\": \"acolher\",
@@ -247,7 +317,7 @@ AÇÕES VÁLIDAS para decision.action:
 
         $linhas = [];
 
-        foreach (array_slice($historico, -5) as $item) {
+        foreach (array_slice($historico, -6) as $item) {
             $pergunta = trim((string) ($item['pergunta'] ?? ''));
             $resposta = trim((string) ($item['resposta'] ?? ''));
 
