@@ -32,8 +32,15 @@ class Lead360ConversationStateService
             return $this->buildState('E3', $contexto['estado_atual'] ?? null, 'solucao_principal', $merged);
         }
 
-        if (empty($merged['tipo_imovel']) || empty($merged['area_projeto'])) {
-            return $this->buildState('E4', $contexto['estado_atual'] ?? null, empty($merged['tipo_imovel']) ? 'tipo_imovel' : 'area_projeto', $merged);
+        if (empty($merged['area_projeto'])) {
+            return $this->buildState('E4', $contexto['estado_atual'] ?? null, 'area_projeto', $merged);
+        }
+
+        $temTipoImovelForte = ! empty($merged['tipo_imovel']);
+        $tipoImovelPodeEsperar = in_array($merged['area_projeto'] ?? '', ['garagem', 'quintal', 'fundos', 'varanda', 'varanda gourmet', 'piscina', 'jardim', 'lavanderia', 'terraco'], true);
+
+        if (! $temTipoImovelForte && ! $tipoImovelPodeEsperar) {
+            return $this->buildState('E4', $contexto['estado_atual'] ?? null, 'tipo_imovel', $merged);
         }
 
         $temMedida = ! empty($merged['largura']) && ! empty($merged['comprimento']);
@@ -43,8 +50,12 @@ class Lead360ConversationStateService
             return $this->buildState('E5', $contexto['estado_atual'] ?? null, 'medida_ou_midia', $merged);
         }
 
-        if (empty($merged['principal_desejo']) || empty($merged['prioridade_atual'])) {
-            return $this->buildState('E6', $contexto['estado_atual'] ?? null, empty($merged['principal_desejo']) ? 'principal_desejo' : 'prioridade_atual', $merged);
+        if (empty($merged['principal_desejo'])) {
+            return $this->buildState('E6', $contexto['estado_atual'] ?? null, 'principal_desejo', $merged);
+        }
+
+        if (empty($merged['prioridade_atual'])) {
+            return $this->buildState('E6', $contexto['estado_atual'] ?? null, 'prioridade_atual', $merged);
         }
 
         if ($this->isReadyForHandoff($merged)) {
@@ -158,12 +169,14 @@ class Lead360ConversationStateService
             $pendentes[] = 'solucao_principal';
         }
 
-        if (empty($merged['tipo_imovel'])) {
-            $pendentes[] = 'tipo_imovel';
-        }
-
         if (empty($merged['area_projeto'])) {
             $pendentes[] = 'area_projeto';
+        }
+
+        $tipoImovelPodeEsperar = in_array($merged['area_projeto'] ?? '', ['garagem', 'quintal', 'fundos', 'varanda', 'varanda gourmet', 'piscina', 'jardim', 'lavanderia', 'terraco'], true);
+
+        if (empty($merged['tipo_imovel']) && ! $tipoImovelPodeEsperar) {
+            $pendentes[] = 'tipo_imovel';
         }
 
         if (
@@ -231,7 +244,8 @@ class Lead360ConversationStateService
             'L1' => 'bloquear_fora_escopo',
             'L2' => 'mudar_para_assistencia',
             'E1' => 'acolher',
-            'E2', 'E3', 'E4', 'E5', 'E6' => 'perguntar',
+            'E2', 'E3', 'E4', 'E6' => 'perguntar',
+            'E5' => 'pedir_material_apoio',
             'E7' => 'orientar',
             'E8' => 'encaminhar_humano',
             default => 'acolher',
