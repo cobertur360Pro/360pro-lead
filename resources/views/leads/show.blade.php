@@ -119,11 +119,23 @@
 
     <hr>
 
+    <hr><br>
+
     <h2>Teste da IA</h2>
+    
     <form method="POST" action="{{ route('leads.ia', $lead->id) }}">
         @csrf
-        <textarea name="mensagem_ia" rows="5" cols="80" placeholder="Digite aqui uma mensagem como se fosse o cliente..." required></textarea>
+    
+        <textarea
+            name="mensagem"
+            rows="4"
+            style="width: 100%;"
+            placeholder="Digite aqui uma mensagem como se fosse o cliente..."
+            required
+        ></textarea>
+    
         <br><br>
+    
         <button type="submit">Perguntar para a IA</button>
     </form>
 
