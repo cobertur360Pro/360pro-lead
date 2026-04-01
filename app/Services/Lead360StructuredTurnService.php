@@ -14,10 +14,18 @@ class Lead360StructuredTurnService
         $raw = $this->openAIService->processarTurnoEstruturado($mensagem, $contexto);
 
         if (! is_array($raw)) {
-            return $this->emptyResult();
+            $fallback = $this->emptyResult();
+            $fallback['reply'] = $this->fallbackReply($contexto);
+            return $fallback;
         }
 
-        return $this->normalize($raw, $contexto);
+        $normalized = $this->normalize($raw, $contexto);
+
+        if (empty($normalized['reply'])) {
+            $normalized['reply'] = $this->fallbackReply($contexto, $normalized);
+        }
+
+        return $normalized;
     }
 
     protected function normalize(array $raw, array $contexto): array
@@ -27,7 +35,6 @@ class Lead360StructuredTurnService
 
         $normalized = [
             'understood_summary' => $this->cleanString($raw['understood_summary'] ?? null),
-
             'answered_current_gap' => (bool) ($raw['answered_current_gap'] ?? false),
 
             'extracted' => [
@@ -78,27 +85,49 @@ class Lead360StructuredTurnService
             'raw' => $raw,
         ];
 
-        $lacunaAtual = $contexto['lacuna_atual'] ?? null;
-        $gapRespondido = $normalized['decision']['next_gap'] ?? null;
+        $normalized = $this->postProcess($normalized, $contexto);
 
-        if (! $normalized['answered_current_gap'] && $lacunaAtual) {
-            if ($this->gapWasAnsweredByExtraction($lacunaAtual, $normalized['extracted'])) {
+        return $normalized;
+    }
+
+    protected function postProcess(array $normalized, array $contexto): array
+    {
+        $e = &$normalized['extracted'];
+        $d = &$normalized['decision'];
+        $lacunaAtual = $contexto['lacuna_atual'] ?? null;
+
+        if (empty($e['principal_desejo']) && ! empty($e['contexto_uso'])) {
+            $e['principal_desejo'] = $e['contexto_uso'];
+        }
+
+        if (! empty($e['quer_visita'])) {
+            $d['action'] = 'encaminhar_visita';
+            $d['next_gap'] = null;
+            $normalized['answered_current_gap'] = true;
+        }
+
+        if ($lacunaAtual && ! $normalized['answered_current_gap']) {
+            if ($this->gapWasAnsweredByExtraction($lacunaAtual, $e)) {
                 $normalized['answered_current_gap'] = true;
             }
         }
 
-        if ($normalized['decision']['action'] === null) {
-            $normalized['decision']['action'] = $this->inferActionFromResult($normalized, $contexto);
+        if ($d['action'] === null) {
+            $d['action'] = $this->inferAction($normalized, $contexto);
         }
 
-        if ($normalized['decision']['next_gap'] === null && $gapRespondido) {
-            $normalized['decision']['next_gap'] = $gapRespondido;
+        if ($d['next_gap'] === null) {
+            $d['next_gap'] = $this->inferNextGap($normalized, $contexto);
+        }
+
+        if (empty($normalized['reply'])) {
+            $normalized['reply'] = $this->fallbackReply($contexto, $normalized);
         }
 
         return $normalized;
     }
 
-    protected function inferActionFromResult(array $normalized, array $contexto): string
+    protected function inferAction(array $normalized, array $contexto): string
     {
         $e = $normalized['extracted'];
 
@@ -114,6 +143,10 @@ class Lead360StructuredTurnService
             return 'encaminhar_visita';
         }
 
+        if (! empty($e['objecao_principal'])) {
+            return 'defender_valor';
+        }
+
         if (($contexto['lacuna_atual'] ?? null) === 'nome' && empty($e['nome'])) {
             return 'perguntar';
         }
@@ -123,6 +156,77 @@ class Lead360StructuredTurnService
         }
 
         return 'acolher';
+    }
+
+    protected function inferNextGap(array $normalized, array $contexto): ?string
+    {
+        $e = $normalized['extracted'];
+        $merged = $this->mergeContexto($contexto, $e);
+
+        if (empty($merged['nome'])) {
+            return 'nome';
+        }
+
+        if (empty($merged['bairro']) && empty($merged['cidade']) && empty($merged['cep'])) {
+            return 'localizacao';
+        }
+
+        if (empty($merged['solucao_principal'])) {
+            return 'solucao_principal';
+        }
+
+        if (empty($merged['area_projeto'])) {
+            return 'area_projeto';
+        }
+
+        if (
+            (empty($merged['largura']) || empty($merged['comprimento']))
+            && empty($merged['tem_foto'])
+            && empty($merged['tem_video'])
+            && empty($merged['tem_projeto'])
+        ) {
+            return 'medida_ou_midia';
+        }
+
+        if (empty($merged['principal_desejo'])) {
+            return 'principal_desejo';
+        }
+
+        if (empty($merged['prioridade_atual'])) {
+            return 'prioridade_atual';
+        }
+
+        return null;
+    }
+
+    protected function fallbackReply(array $contexto, array $normalized = []): string
+    {
+        $e = $normalized['extracted'] ?? [];
+        $action = $normalized['decision']['action'] ?? 'acolher';
+        $nextGap = $normalized['decision']['next_gap'] ?? null;
+
+        if (! empty($e['fora_escopo'])) {
+            return 'Hoje nosso atendimento está focado nas soluções da linha Baumann, como coberturas em vidro, policarbonato e envidraçamentos. Se o seu projeto estiver nessa linha, eu sigo com você por aqui.';
+        }
+
+        if (! empty($e['assistencia'])) {
+            return 'Entendi. Vamos tratar isso como assistência. Me confirma por favor o problema exato e, se puder, envie foto ou vídeo para eu deixar o atendimento bem direcionado.';
+        }
+
+        if (! empty($e['quer_visita'])) {
+            return 'Perfeito. Nesse caso, faz sentido mesmo seguir com uma visita para avaliar melhor o local. Me diz seu nome para eu registrar seu atendimento certinho e deixar isso encaminhado da forma correta.';
+        }
+
+        return match ($nextGap) {
+            'nome' => 'Perfeito. Antes de seguir, me diz seu nome para eu registrar seu atendimento certinho.',
+            'localizacao' => 'Ótimo. Pra eu te orientar com mais precisão, me passa o CEP do local da instalação ou pelo menos o bairro e a cidade.',
+            'solucao_principal' => 'Me conta uma coisa pra eu te orientar certo: você está buscando cobertura, fechamento, sacada ou outra solução da nossa linha?',
+            'area_projeto' => 'Entendi. E essa instalação é para qual área exatamente? Garagem, quintal, corredor, espaço gourmet, fundos, varanda...?',
+            'medida_ou_midia' => 'Perfeito. Se você já tiver a medida aproximada ou alguma foto, vídeo ou projeto do local, isso já ajuda bastante a te orientar certo.',
+            'principal_desejo' => 'Agora me ajuda com uma parte importante: o que você mais busca com esse projeto? Proteção, conforto, estética, segurança ou uso do espaço?',
+            'prioridade_atual' => 'Entendi. E olhando para esse projeto agora, o que pesa mais na sua decisão: prazo, qualidade, preço, forma de pagamento ou outro ponto?',
+            default => 'Oi! Tudo bem 🙂 Sou o assistente da Baumann e vou te ajudar por aqui. Me conta: você está buscando cobertura, fechamento, sacada ou outra solução da nossa linha?',
+        };
     }
 
     protected function gapWasAnsweredByExtraction(string $gap, array $e): bool
@@ -138,6 +242,32 @@ class Lead360StructuredTurnService
             'prioridade_atual' => ! empty($e['prioridade_atual']),
             default => false,
         };
+    }
+
+    protected function mergeContexto(array $contexto, array $e): array
+    {
+        $merged = $contexto;
+
+        foreach ($e as $chave => $valor) {
+            if ($valor === null) {
+                continue;
+            }
+
+            if (is_array($valor) && empty($valor)) {
+                continue;
+            }
+
+            if (is_bool($valor)) {
+                if ($valor === true) {
+                    $merged[$chave] = true;
+                }
+                continue;
+            }
+
+            $merged[$chave] = $valor;
+        }
+
+        return $merged;
     }
 
     protected function emptyResult(): array
