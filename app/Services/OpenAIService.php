@@ -25,6 +25,63 @@ class OpenAIService
         );
     }
 
+    public function extrairSemanticaLead(string $mensagem, array $contexto = []): ?array
+    {
+        $guardrails = app(Lead360GuardrailsService::class);
+
+        if (! $guardrails->atendimentoIaHabilitado()) {
+            return null;
+        }
+
+        if (! $guardrails->openAiHabilitada()) {
+            return null;
+        }
+
+        $apiKey = env('OPENAI_API_KEY');
+
+        if (! $apiKey) {
+            return null;
+        }
+
+        $prompt = $this->montarPromptExtracaoSemantica($contexto);
+
+        try {
+            $response = Http::withToken($apiKey)
+                ->timeout(60)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+                    'messages' => [
+                        ['role' => 'system', 'content' => $prompt],
+                        ['role' => 'user', 'content' => $mensagem],
+                    ],
+                    'temperature' => 0.1,
+                    'max_tokens' => 500,
+                ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $content = data_get($response->json(), 'choices.0.message.content');
+
+            if (! is_string($content) || trim($content) === '') {
+                return null;
+            }
+
+            $json = $this->extractJsonFromText($content);
+
+            if (! $json) {
+                return null;
+            }
+
+            $decoded = json_decode($json, true);
+
+            return is_array($decoded) ? $decoded : null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
     protected function callOpenAi(string $mensagem, array $contexto, string $systemPrompt): string
     {
         $guardrails = app(Lead360GuardrailsService::class);
@@ -221,5 +278,107 @@ INSTRUÇÕES DESTA RESPOSTA
 - Se estiver orientando, seja consultivo, claro e objetivo.
 - Use tom humano e profissional.
 ";
+    }
+
+    protected function montarPromptExtracaoSemantica(array $contexto = []): string
+    {
+        $lacunaAtual = $contexto['lacuna_atual'] ?? 'nao_informada';
+
+        return "
+Você é um extrator semântico comercial da Baumann Envidraçamento.
+
+Sua função NÃO é responder ao cliente.
+Sua função é LER a mensagem e devolver APENAS JSON válido.
+
+Regras:
+- entenda o SENTIDO da resposta, não apenas palavras exatas
+- considere a lacuna atual da conversa
+- se a mensagem responder à lacuna atual, marque isso
+- se a mensagem trouxer dado novo relevante, extraia
+- se a mensagem indicar fora de escopo, marque fora_escopo=true
+- se a mensagem indicar assistência/manutenção/pós-venda, marque assistencia=true
+- se a mensagem trouxer principal desejo de forma indireta, capture o sentido
+- 'chácara', 'sítio', 'rancho', 'casa de campo' costumam se comportar como contexto de casa
+- 'para as crianças brincarem', 'espaço para brincar', 'usar como lugar para as crianças' normalmente indicam principal_desejo = uso do espaco
+- 'pesquisando cobertura', 'levantando orçamento', 'adiantando orçamento' indicam estagio_decisao = levantamento de orçamento
+- se não souber um campo, use null
+- não invente
+- não escreva explicação
+- devolva somente JSON puro
+
+Lacuna atual da conversa: {$lacunaAtual}
+
+Campos esperados no JSON:
+{
+  \"tipo_mensagem\": null,
+  \"responde_lacuna_atual\": false,
+  \"lacuna_respondida\": null,
+  \"trouxe_dado_novo\": false,
+  \"mudou_assunto\": false,
+
+  \"nome\": null,
+  \"telefone\": null,
+  \"email\": null,
+  \"perfil_contato\": null,
+
+  \"cep\": null,
+  \"endereco\": null,
+  \"bairro\": null,
+  \"cidade\": null,
+
+  \"solucao_principal\": null,
+  \"solucao_subtipo\": null,
+  \"fora_escopo\": false,
+
+  \"tipo_imovel\": null,
+  \"area_projeto\": null,
+  \"contexto_uso\": null,
+
+  \"largura\": null,
+  \"comprimento\": null,
+  \"area_informada_m2\": null,
+  \"tem_foto\": false,
+  \"tem_video\": false,
+  \"tem_projeto\": false,
+
+  \"principal_desejo\": null,
+  \"prioridade_atual\": [],
+  \"urgencia\": null,
+  \"objecao_principal\": null,
+  \"estagio_decisao\": null,
+
+  \"assistencia\": false,
+  \"problema_relato\": null,
+
+  \"confianca_geral\": \"baixa\",
+  \"campos_baixa_confianca\": []
+}
+";
+    }
+
+    protected function extractJsonFromText(string $text): ?string
+    {
+        $text = trim($text);
+
+        $decoded = json_decode($text, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $text;
+        }
+
+        $start = strpos($text, '{');
+        $end = strrpos($text, '}');
+
+        if ($start === false || $end === false || $end <= $start) {
+            return null;
+        }
+
+        $json = substr($text, $start, $end - $start + 1);
+        $decoded = json_decode($json, true);
+
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $json;
+        }
+
+        return null;
     }
 }
