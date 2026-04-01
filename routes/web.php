@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use App\Services\LeadDecisionEngineService;
 use App\Services\Lead360GuardrailsService;
 use App\Services\Lead360StageService;
+use App\Services\Lead360OrchestratorService;
 
 Route::get('/', function () {
     return view('home');
@@ -108,126 +109,34 @@ Route::post('/leads/{id}/qualificacao', function ($id, Request $request) {
 Route::post('/leads/{id}/ia', function (
     $id,
     Request $request,
-    OpenAIService $openAIService,
-    LeadMemoryExtractorService $memoryExtractor,
     LeadDecisionEngineService $decisionEngine,
     Lead360GuardrailsService $guardrails,
-    Lead360StageService $stageService
+    Lead360OrchestratorService $orchestrator
 ) {
-    $request->validate([
-        'mensagem_ia' => ['required', 'string'],
-    ]);
+    $lead = Lead::query()->findOrFail($id);
 
-    $lead = Lead::query()->with('interactions')->findOrFail($id);
+    $mensagem = trim((string) $request->input('mensagem', ''));
 
-    $mensagem = $request->input('mensagem_ia');
-    $intentService = app(\App\Services\Lead360IntentService::class);
-    $intencao = $intentService->detectar($mensagem);
-    
-    $resposta = null;
-    
-    if ($intencao === 'saudacao') {
-        $resposta = 'Oi! Tudo bem 🙂 Sou o assistente da Baumann e vou te ajudar a encontrar a melhor solução. Me conta: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
+    if ($mensagem === '') {
+        return redirect()->route('leads.show', $lead->id);
     }
-    
-    elseif ($intencao === 'identidade') {
-        $resposta = 'Eu sou o assistente virtual da Baumann, criado para te orientar de forma rápida e correta. Se precisar, posso encaminhar você para um especialista também. Me conta: o que você está buscando no seu projeto?';
-    }
-    
-    elseif ($intencao === 'duvida') {
-        $resposta = 'Sem problema, eu te explico melhor 🙂 Vou te fazer algumas perguntas rápidas para entender seu projeto e te orientar da forma certa. Primeiro: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
-    }
-
-    $memoryExtractor->extrairEAtualizar($lead, $mensagem);
 
     if ($guardrails->qualificacaoHabilitada()) {
         $decisionEngine->processar($lead, $mensagem);
     }
 
     $lead->refresh();
-    $lead->load('interactions');
 
-    $historico = $lead->interactions
-        ->take(10)
-        ->reverse()
-        ->map(function ($i) {
-            return [
-                'pergunta' => $i->conteudo,
-                'resposta' => $i->resposta_ia,
-            ];
-        })
-               ->values()
-        ->toArray();
+    $resultado = $orchestrator->process($lead, $mensagem);
 
-    $fatos = $lead->fatosConfirmados();
+    LeadInteraction::create([
+        'lead_id' => $lead->id,
+        'tipo' => 'ia_teste',
+        'conteudo' => $mensagem,
+        'resposta_ia' => $resultado['resposta'],
+    ]);
 
-    $resposta = null;
-
-   if ($guardrails->qualificacaoHabilitada()) {
-    $decisionEngine->processar($lead, $mensagem);
-}
-
-$lead->refresh();
-$lead->load('interactions');
-
-$historico = $lead->interactions
-    ->take(10)
-    ->reverse()
-    ->map(function ($i) {
-        return [
-            'pergunta' => $i->conteudo,
-            'resposta' => $i->resposta_ia,
-        ];
-    })
-    ->values()
-    ->toArray();
-
-$fatos = $lead->fatosConfirmados();
-
-$intentService = app(\App\Services\Lead360IntentService::class);
-$intencao = $intentService->detectar($mensagem);
-
-$resposta = null;
-
-// 1) Primeiro trata intenção básica da conversa
-if ($intencao === 'saudacao') {
-    $resposta = 'Oi! Tudo bem 🙂 Sou o assistente da Baumann e vou te ajudar a encontrar a melhor solução. Me conta: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
-} elseif ($intencao === 'identidade') {
-    $resposta = 'Eu sou o assistente virtual da Baumann, criado para te orientar de forma rápida e correta. Se precisar, também posso encaminhar você para um especialista. Me conta: o que você está buscando no seu projeto?';
-} elseif ($intencao === 'duvida') {
-    $resposta = 'Sem problema, eu te explico melhor 🙂 Vou te fazer algumas perguntas rápidas para entender seu projeto e te orientar da forma certa. Primeiro: você está buscando cobertura, fechamento, sacada ou algo nessa linha?';
-}
-
-// 2) Só entra no fluxo guiado se ainda não tiver resposta
-if (! $resposta && $guardrails->fluxoGuiadoAtivo()) {
-    $proximaPergunta = $stageService->proximaPergunta($lead);
-
-    if ($proximaPergunta) {
-        $resposta = $proximaPergunta;
-    }
-}
-
-// 3) Só chama OpenAI se ainda não tiver resposta
-if (! $resposta) {
-    $resposta = $openAIService->responderLead(
-        $mensagem,
-        array_merge($fatos, [
-            'historico' => $historico,
-        ])
-    );
-}
-
-$humanizer = app(\App\Services\Lead360HumanizerService::class);
-$resposta = $humanizer->humanizar($resposta);
-
-LeadInteraction::create([
-    'lead_id' => $lead->id,
-    'tipo' => 'ia_teste',
-    'conteudo' => $mensagem,
-    'resposta_ia' => $resposta,
-]);
-
-return redirect()->route('leads.show', $lead->id);
+    return redirect()->route('leads.show', $lead->id);
 })->name('leads.ia');
 
 Route::post('/leads/status/{id}', function ($id) {
